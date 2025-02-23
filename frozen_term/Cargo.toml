@@ -1,0 +1,13 @@
+[package]
+name = "frozen_term"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+description = "A terminal emulator to embed into your iced application - includes demo app"
+
+[dependencies]
+iced = { version = "0.13.1", features = ["advanced", "tokio"] }
+thiserror = "2.0.3"
+tokio = { version = "1.41.1", features = ["full"] }
+wezterm-term = { git = "https://github.com/wez/wezterm.git" }
+termwiz = { git = "https://github.com/wez/wezterm.git" }
