@@ -32,6 +32,8 @@ pub enum Message {
         modified_key: keyboard::key::Key,
         modifiers: keyboard::Modifiers,
     },
+    AdvanceBytes(Vec<u8>),
+    TitleChange(String),
 }
 
 pub struct Terminal {
@@ -84,19 +86,12 @@ impl Terminal {
                 }
                 Task::none()
             }
+            Message::TitleChange(_) => Task::none(),
+            Message::AdvanceBytes(bytes) => {
+                self.term.advance_bytes(bytes);
+                Task::none()
+            }
         }
-    }
-
-    pub fn advance_bytes<B: AsRef<[u8]>>(&mut self, bytes: B) {
-        self.term.advance_bytes(bytes);
-    }
-
-    pub fn get_title(&self) -> &str {
-        self.term.get_title()
-    }
-
-    pub fn resize(&mut self, size: TerminalSize) {
-        self.term.resize(size)
     }
 
     pub fn view<'a, Theme, Renderer>(&'a self) -> Element<'a, Message, Theme, Renderer>

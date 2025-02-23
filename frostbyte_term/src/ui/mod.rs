@@ -13,7 +13,6 @@ use tokio::task::{JoinHandle, spawn_blocking};
 #[derive(Debug, Clone)]
 pub enum Message {
     Terminal(frozen_term::Message),
-    TerminalOutput(Vec<u8>),
 }
 
 pub struct UI {
@@ -92,10 +91,6 @@ impl UI {
 
                 self.term.update(msg).map(Message::Terminal)
             }
-            Message::TerminalOutput(output) => {
-                self.term.advance_bytes(output);
-                Task::none()
-            }
         }
     }
 
@@ -128,7 +123,8 @@ impl UI {
                 }
 
                 while let Some(s) = recv.recv().await {
-                    output.send(Message::TerminalOutput(s)).await.unwrap();
+                    let message = Message::Terminal(frozen_term::Message::AdvanceBytes(s));
+                    output.send(message).await.unwrap();
                 }
             }),
         )])
