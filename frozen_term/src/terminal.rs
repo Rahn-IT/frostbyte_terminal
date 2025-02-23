@@ -39,6 +39,7 @@ pub enum Message {
 pub struct Terminal {
     term: wezterm_term::Terminal,
     id: Option<Id>,
+    old_title: String,
 }
 
 #[derive(Debug)]
@@ -63,7 +64,11 @@ impl Terminal {
         let term =
             wezterm_term::Terminal::new(size, Arc::new(config), "frozen_term", "0.1", writer);
 
-        Self { term, id: None }
+        Self {
+            term,
+            id: None,
+            old_title: String::new(),
+        }
     }
 
     pub fn id(mut self, id: impl Into<Id>) -> Self {
@@ -89,6 +94,11 @@ impl Terminal {
             Message::TitleChange(_) => Task::none(),
             Message::AdvanceBytes(bytes) => {
                 self.term.advance_bytes(bytes);
+                let current_title = self.term.get_title();
+                if current_title != &self.old_title {
+                    self.old_title = current_title.to_string();
+                    return Task::done(Message::TitleChange(self.old_title.clone()));
+                }
                 Task::none()
             }
         }
@@ -531,9 +541,9 @@ where
             }
         }
 
-        renderer.fill_paragraph(&state.paragraph, bounds.position(), Color::WHITE, bounds);
-
         draw_cursor(renderer, &state, translation);
+
+        renderer.fill_paragraph(&state.paragraph, bounds.position(), Color::WHITE, bounds);
     }
 }
 

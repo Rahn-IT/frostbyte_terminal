@@ -17,6 +17,7 @@ pub enum Message {
 
 pub struct UI {
     term: Terminal,
+    title: String,
     child: Box<dyn Child + Send + Sync>,
     copy_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     pty: PtyPair,
@@ -71,6 +72,7 @@ impl UI {
                 pty,
                 child,
                 copy_handle: Arc::new(Mutex::new(None)),
+                title: "Frostbyte Term".to_string(),
             },
             Task::none(),
         )
@@ -78,6 +80,10 @@ impl UI {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::Terminal(frozen_term::Message::TitleChange(title)) => {
+                self.title = title;
+                Task::none()
+            }
             Message::Terminal(msg) => {
                 if let frozen_term::Message::Resize(size) = msg {
                     let pty_size = PtySize {
@@ -128,5 +134,9 @@ impl UI {
                 }
             }),
         )])
+    }
+
+    pub fn title(&self) -> String {
+        self.title.clone()
     }
 }
