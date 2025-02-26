@@ -80,22 +80,27 @@ impl UI {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Terminal(frozen_term::Message::TitleChange(title)) => {
-                self.title = title;
-                Task::none()
-            }
             Message::Terminal(msg) => {
-                if let frozen_term::Message::Resize(size) = msg {
-                    let pty_size = PtySize {
-                        rows: size.rows as u16,
-                        cols: size.cols as u16,
-                        pixel_height: size.pixel_height as u16,
-                        pixel_width: size.pixel_width as u16,
-                    };
-                    self.pty.master.resize(pty_size).unwrap();
-                }
+                let action = self.term.update(msg);
 
-                self.term.update(msg).map(Message::Terminal)
+                match action {
+                    frozen_term::Action::None => Task::none(),
+                    frozen_term::Action::Resize(size) => {
+                        let pty_size = PtySize {
+                            rows: size.rows as u16,
+                            cols: size.cols as u16,
+                            pixel_height: size.pixel_height as u16,
+                            pixel_width: size.pixel_width as u16,
+                        };
+                        self.pty.master.resize(pty_size).unwrap();
+
+                        Task::none()
+                    }
+                    frozen_term::Action::UpdateTitle(title) => {
+                        self.title = title;
+                        Task::none()
+                    }
+                }
             }
         }
     }

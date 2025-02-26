@@ -4,7 +4,7 @@ use std::{
 };
 
 use iced::{
-    Border, Color, Element, Length, Point, Rectangle, Size, Task, Vector,
+    Border, Color, Element, Length, Point, Rectangle, Size, Vector,
     advanced::{
         Shell, Text,
         layout::Node,
@@ -33,7 +33,12 @@ pub enum Message {
         modifiers: keyboard::Modifiers,
     },
     AdvanceBytes(Vec<u8>),
-    TitleChange(String),
+}
+
+pub enum Action {
+    None,
+    Resize(TerminalSize),
+    UpdateTitle(String),
 }
 
 pub struct Terminal {
@@ -76,11 +81,11 @@ impl Terminal {
         self
     }
 
-    pub fn update(&mut self, message: Message) -> Task<Message> {
+    pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::Resize(size) => {
-                self.term.resize(size);
-                Task::none()
+                self.term.resize(size.clone());
+                Action::Resize(size)
             }
             Message::KeyPress {
                 modified_key: key,
@@ -89,17 +94,18 @@ impl Terminal {
                 if let Some((key, modifiers)) = transform_key(key, modifiers) {
                     self.term.key_down(key, modifiers).unwrap();
                 }
-                Task::none()
+
+                Action::None
             }
-            Message::TitleChange(_) => Task::none(),
             Message::AdvanceBytes(bytes) => {
                 self.term.advance_bytes(bytes);
                 let current_title = self.term.get_title();
                 if current_title != &self.old_title {
                     self.old_title = current_title.to_string();
-                    return Task::done(Message::TitleChange(self.old_title.clone()));
+                    Action::UpdateTitle(self.old_title.clone())
+                } else {
+                    Action::None
                 }
-                Task::none()
             }
         }
     }
