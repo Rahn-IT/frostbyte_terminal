@@ -35,7 +35,7 @@ impl Drop for UI {
 impl UI {
     #[cfg(unix)]
     fn get_shell() -> String {
-        env::var("SHELL").unwrap_or("/bin/bash".to_string())
+        std::env::var("SHELL").unwrap_or("/bin/bash".to_string())
     }
 
     #[cfg(windows)]
