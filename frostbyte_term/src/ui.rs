@@ -16,7 +16,6 @@ pub enum Message {
 
 pub struct UI {
     term: Terminal,
-    title: String,
     child: Box<dyn Child + Send + Sync>,
     copy_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     pty: PtyPair,
@@ -62,7 +61,7 @@ impl UI {
 
         let writer = pty.master.take_writer().unwrap();
 
-        let term = Terminal::new(rows, cols, writer);
+        let (term, task) = Terminal::new(rows, cols);
 
         (
             Self {
@@ -71,9 +70,8 @@ impl UI {
                 pty,
                 child,
                 copy_handle: Arc::new(Mutex::new(None)),
-                title: "Frostbyte Term".to_string(),
             },
-            Task::none(),
+            task.map(Message::Terminal),
         )
     }
 
@@ -95,9 +93,8 @@ impl UI {
 
                         Task::none()
                     }
-                    frozen_term::Action::UpdateTitle(title) => {
-                        self.title = title;
-                        Task::none()
+                    frozen_term::Action::Input(input) => {
+                        
                     }
                 }
             }
@@ -141,6 +138,6 @@ impl UI {
     }
 
     pub fn title(&self) -> String {
-        self.title.clone()
+        self.term.title().to_string()
     }
 }

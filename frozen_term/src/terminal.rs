@@ -4,7 +4,7 @@ use std::{
 };
 
 use iced::{
-    Border, Color, Element, Length, Point, Rectangle, Size, Vector,
+    Border, Color, Element, Length, Point, Rectangle, Size, Task, Vector,
     advanced::{
         Shell, Text,
         layout::Node,
@@ -14,10 +14,12 @@ use iced::{
     },
     alignment::{Horizontal, Vertical},
     keyboard,
+    task::Handle,
     widget::text::{LineHeight, Shaping, Wrapping},
     window::RedrawRequest,
 };
 use termwiz::surface::{CursorShape, CursorVisibility};
+use tokio::sync::mpsc;
 use wezterm_term::{
     CellAttributes, CursorPosition, TerminalConfiguration,
     color::{ColorAttribute, ColorPalette},
@@ -26,25 +28,29 @@ use wezterm_term::{
 pub use wezterm_term::TerminalSize;
 
 #[derive(Debug, Clone)]
+pub struct MessageWrapper(Message);
+
+#[derive(Debug, Clone)]
 pub enum Message {
     Resize(TerminalSize),
     KeyPress {
         modified_key: keyboard::key::Key,
         modifiers: keyboard::Modifiers,
     },
-    AdvanceBytes(Vec<u8>),
+    Input(Vec<u8>),
 }
 
 pub enum Action {
     None,
     Resize(TerminalSize),
-    UpdateTitle(String),
+    Input(Vec<u8>),
 }
 
 pub struct Terminal {
     term: wezterm_term::Terminal,
     id: Option<Id>,
-    old_title: String,
+    // here to abort the task on drop
+    _handle: Handle,
 }
 
 #[derive(Debug)]
@@ -56,8 +62,26 @@ impl TerminalConfiguration for Config {
     }
 }
 
+pub struct BridgedWriter {
+    send: mpsc::Sender<Vec<u8>>,
+}
+
+impl std::io::Write for BridgedWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.send.blocking_send(buf.to_vec()).is_ok() {
+            Ok(buf.len())
+        } else {
+            Ok(0)
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 impl Terminal {
-    pub fn new(rows: u16, cols: u16, writer: Box<dyn std::io::Write + Send>) -> Self {
+    pub fn new(rows: u16, cols: u16) -> (Self, Task<MessageWrapper>) {
         let size = TerminalSize {
             rows: rows as usize,
             cols: cols as usize,
@@ -66,14 +90,32 @@ impl Terminal {
 
         let config = Config {};
 
-        let term =
-            wezterm_term::Terminal::new(size, Arc::new(config), "frozen_term", "0.1", writer);
+        let (send, recv) = mpsc::channel(10);
+        let recv = tokio_stream::wrappers::ReceiverStream::new(recv);
+        let writer = BridgedWriter { send };
 
-        Self {
-            term,
-            id: None,
-            old_title: String::new(),
-        }
+        let term = wezterm_term::Terminal::new(
+            size,
+            Arc::new(config),
+            "frozen_term",
+            "0.1",
+            Box::new(writer),
+        );
+
+        let (task, handle) = Task::run(recv, Message::Input)
+            .map(MessageWrapper)
+            .abortable();
+
+        let handle = handle.abort_on_drop();
+
+        (
+            Self {
+                term,
+                id: None,
+                _handle: handle,
+            },
+            task,
+        )
     }
 
     pub fn id(mut self, id: impl Into<Id>) -> Self {
@@ -81,8 +123,12 @@ impl Terminal {
         self
     }
 
-    pub fn update(&mut self, message: Message) -> Action {
-        match message {
+    pub fn title(&self) -> &str {
+        self.term.get_title()
+    }
+
+    pub fn update(&mut self, message: MessageWrapper) -> Action {
+        match message.0 {
             Message::Resize(size) => {
                 self.term.resize(size.clone());
                 Action::Resize(size)
@@ -97,20 +143,11 @@ impl Terminal {
 
                 Action::None
             }
-            Message::AdvanceBytes(bytes) => {
-                self.term.advance_bytes(bytes);
-                let current_title = self.term.get_title();
-                if current_title != &self.old_title {
-                    self.old_title = current_title.to_string();
-                    Action::UpdateTitle(self.old_title.clone())
-                } else {
-                    Action::None
-                }
-            }
+            Message::Input(input) => Action::Input(input),
         }
     }
 
-    pub fn view<'a, Theme, Renderer>(&'a self) -> Element<'a, Message, Theme, Renderer>
+    pub fn view<'a, Theme, Renderer>(&'a self) -> Element<'a, MessageWrapper, Theme, Renderer>
     where
         Renderer: iced::advanced::text::Renderer<Font = iced::Font> + 'static,
         Theme: iced::widget::text::Catalog + 'static,
@@ -121,6 +158,7 @@ impl Terminal {
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
         Element::new(TerminalWidget::new(self, iced::Font::MONOSPACE).id_maybe(self.id.clone()))
+            .map(MessageWrapper)
     }
 }
 
