@@ -1,3 +1,4 @@
+pub mod threaded_writer;
 mod ui;
 
 use ui::UI;

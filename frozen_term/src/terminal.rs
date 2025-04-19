@@ -123,8 +123,15 @@ impl Terminal {
         self
     }
 
-    pub fn title(&self) -> &str {
+    pub fn get_title(&self) -> &str {
         self.term.get_title()
+    }
+
+    pub fn advance_bytes<B>(&mut self, bytes: B)
+    where
+        B: AsRef<[u8]>,
+    {
+        self.term.advance_bytes(bytes)
     }
 
     pub fn update(&mut self, message: MessageWrapper) -> Action {

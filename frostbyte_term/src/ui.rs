@@ -1,4 +1,5 @@
 use std::{
+    io::Write,
     ops::Deref,
     sync::{Arc, Mutex},
 };
@@ -8,10 +9,13 @@ use iced::{Element, Subscription, Task, futures::SinkExt, stream::channel};
 use portable_pty::{Child, PtyPair, PtySize};
 use tokio::task::{JoinHandle, spawn_blocking};
 
+use crate::threaded_writer::ThreadedWriter;
+
 /// Messages emitted by the application and its widgets.
 #[derive(Debug, Clone)]
 pub enum Message {
     Terminal(frozen_term::Message),
+    Output(Vec<u8>),
 }
 
 pub struct UI {
@@ -19,6 +23,7 @@ pub struct UI {
     child: Box<dyn Child + Send + Sync>,
     copy_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
     pty: PtyPair,
+    writer: ThreadedWriter,
 }
 
 impl Drop for UI {
@@ -60,6 +65,7 @@ impl UI {
         let child = pty.slave.spawn_command(command).unwrap();
 
         let writer = pty.master.take_writer().unwrap();
+        let writer = ThreadedWriter::new(writer);
 
         let (term, task) = Terminal::new(rows, cols);
 
@@ -70,6 +76,7 @@ impl UI {
                 pty,
                 child,
                 copy_handle: Arc::new(Mutex::new(None)),
+                writer,
             },
             task.map(Message::Terminal),
         )
@@ -94,9 +101,16 @@ impl UI {
                         Task::none()
                     }
                     frozen_term::Action::Input(input) => {
-                        
+                        self.writer.write_all(input.as_ref()).unwrap();
+
+                        Task::none()
                     }
                 }
+            }
+            Message::Output(s) => {
+                self.term.advance_bytes(&s);
+
+                Task::none()
             }
         }
     }
@@ -130,7 +144,7 @@ impl UI {
                 }
 
                 while let Some(s) = recv.recv().await {
-                    let message = Message::Terminal(frozen_term::Message::AdvanceBytes(s));
+                    let message = Message::Output(s);
                     output.send(message).await.unwrap();
                 }
             }),
@@ -138,6 +152,6 @@ impl UI {
     }
 
     pub fn title(&self) -> String {
-        self.term.title().to_string()
+        self.term.get_title().to_string()
     }
 }
