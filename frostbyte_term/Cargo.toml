@@ -7,4 +7,4 @@ edition = "2024"
 frozen_term = { path = "../frozen_term" }
 iced = { version = "0.13.1", features = ["tokio"] }
 portable-pty = "0.9.0"
-tokio = "1.44.2"
+tokio = { workspace = true }

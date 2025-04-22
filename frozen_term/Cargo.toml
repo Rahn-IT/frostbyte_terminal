@@ -7,8 +7,8 @@ description = "A terminal emulator to embed into your iced application - include
 
 [dependencies]
 iced = { version = "0.13.1", features = ["advanced", "tokio"] }
-thiserror = "2.0.12"
-tokio = { version = "1.44.2", features = ["full"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 wezterm-term = { git = "https://github.com/wez/wezterm.git" }
 termwiz = { git = "https://github.com/wez/wezterm.git" }
 tokio-stream = "0.1.17"
