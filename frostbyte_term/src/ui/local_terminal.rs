@@ -4,7 +4,7 @@ use iced::{
     Element, Task,
     widget::{center, text},
 };
-use sipper::{FutureExt, sipper};
+use sipper::sipper;
 use svalin_sysctl::pty::{self, PtyProcess};
 
 #[derive(Debug, Clone)]
@@ -56,17 +56,10 @@ impl LocalTerminal {
                 let (process, output) = Arc::into_inner(arc).unwrap();
 
                 let stream = sipper(|mut sender| async move {
-                    println!("sipper started");
                     let mut output = output;
-                    println!("senders: {}", output.sender_strong_count());
                     while let Some(chunk) = output.recv().await {
-                        // println!("sending pty output: {:?}", chunk);
-                        // println!("senders: {}", output.sender_strong_count());
                         sender.send(Message::Output(chunk)).await;
                     }
-                    println!("senders: {}", output.sender_strong_count());
-
-                    println!("sending close message");
 
                     sender.send(Message::Closed).await;
                 });
@@ -101,7 +94,6 @@ impl LocalTerminal {
                 Action::None
             }
             Message::Output(output) => {
-                // println!("pty output: {:?}", output);
                 self.display.advance_bytes(output);
 
                 Action::None
