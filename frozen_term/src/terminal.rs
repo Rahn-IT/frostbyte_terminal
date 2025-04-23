@@ -7,10 +7,14 @@ use iced::{
     Border, Color, Element, Length, Point, Rectangle, Size, Task, Vector,
     advanced::{
         Shell, Text,
+        graphics::core::widget,
         layout::Node,
         renderer::Quad,
         text::{Paragraph, Renderer},
-        widget::operation::Focusable,
+        widget::{
+            operate,
+            operation::{Focusable, focusable::focus},
+        },
     },
     alignment::{Horizontal, Vertical},
     keyboard,
@@ -121,6 +125,28 @@ impl Terminal {
     pub fn id(mut self, id: impl Into<Id>) -> Self {
         self.id = Some(id.into());
         self
+    }
+
+    pub fn random_id(self) -> Self {
+        self.id(Id(widget::Id::unique()))
+    }
+
+    pub fn focus<T>(&self) -> Task<T>
+    where
+        T: Send + 'static,
+    {
+        if let Some(id) = &self.id {
+            Self::focus_with_id(id.clone())
+        } else {
+            Task::none()
+        }
+    }
+
+    pub fn focus_with_id<T>(id: Id) -> Task<T>
+    where
+        T: Send + 'static,
+    {
+        operate(focus(id.0))
     }
 
     pub fn get_title(&self) -> &str {

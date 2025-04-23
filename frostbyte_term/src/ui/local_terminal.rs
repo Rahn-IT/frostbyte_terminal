@@ -35,6 +35,7 @@ impl LocalTerminal {
     pub fn start() -> (Self, Task<Message>) {
         let size = pty::TerminalSize { cols: 80, rows: 24 };
         let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
+        let display = display.random_id();
 
         let start_task = Task::future(async {
             let (process, output) = PtyProcess::shell(size).await.unwrap();
@@ -116,5 +117,12 @@ impl LocalTerminal {
 
     pub fn get_title(&self) -> &str {
         self.display.get_title()
+    }
+
+    pub fn focus<T>(&self) -> Task<T>
+    where
+        T: Send + 'static,
+    {
+        self.display.focus()
     }
 }
