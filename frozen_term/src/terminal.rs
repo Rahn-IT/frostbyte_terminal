@@ -564,8 +564,8 @@ where
 
                 if state.focused {
                     let message = Message::KeyPress {
-                        modified_key: modified_key,
-                        modifiers: modifiers,
+                        modified_key,
+                        modifiers,
                     };
                     shell.publish(message);
 

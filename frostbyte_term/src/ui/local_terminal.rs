@@ -58,9 +58,11 @@ impl LocalTerminal {
 
                 let stream = sipper(|mut sender| async move {
                     let mut output = output;
+                    println!("reading terminal messages");
                     while let Some(chunk) = output.recv().await {
                         sender.send(Message::Output(chunk)).await;
                     }
+                    println!("no more messages");
 
                     sender.send(Message::Closed).await;
                 });
