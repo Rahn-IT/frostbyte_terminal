@@ -32,7 +32,7 @@ pub enum Message {
     SwitchTab(u32),
     FocusTab(u32),
     CloseTab(u32),
-    Hotkey(u32),
+    Hotkey,
     WindowOpened(window::Id),
     WindowFocused,
     WindowUnfocused,
@@ -48,7 +48,7 @@ pub struct UI {
     selected_tab: u32,
     new_terminal_id: u32,
     _hotkey_manager: GlobalHotKeyManager,
-    f12_id: u32,
+    hotkey_id: u32,
     in_focus: bool,
 }
 
@@ -56,10 +56,10 @@ impl UI {
     pub fn start() -> (Self, Task<Message>) {
         let terminals = BTreeMap::new();
 
-        let f12 = HotKey::new(Some(Modifiers::ALT), global_hotkey::hotkey::Code::F12);
-        let f12_id = f12.id;
+        let hotkey = HotKey::new(None, global_hotkey::hotkey::Code::Pause);
+        let hotkey_id = hotkey.id;
         let hotkey_manager = GlobalHotKeyManager::new().unwrap();
-        hotkey_manager.register(f12).unwrap();
+        hotkey_manager.register(hotkey).unwrap();
 
         (
             Self {
@@ -68,7 +68,7 @@ impl UI {
                 selected_tab: 1,
                 new_terminal_id: 1,
                 _hotkey_manager: hotkey_manager,
-                f12_id,
+                hotkey_id,
                 in_focus: false,
                 last_window_open: Instant::now(),
             },
@@ -104,20 +104,16 @@ impl UI {
                 }
             }
             Message::CloseTab(id) => self.close_tab(id),
-            Message::Hotkey(id) => {
-                if id == self.f12_id {
-                    return if let Some(id) = self.window_id {
-                        if self.in_focus {
-                            window::close(id)
-                        } else {
-                            window::gain_focus(id)
-                        }
+            Message::Hotkey => {
+                return if let Some(id) = self.window_id {
+                    if self.in_focus {
+                        window::close(id)
                     } else {
-                        self.open_window()
-                    };
-                }
-
-                Task::none()
+                        window::gain_focus(id)
+                    }
+                } else {
+                    self.open_window()
+                };
             }
             Message::WindowOpened(id) => {
                 self.last_window_open = Instant::now();
@@ -191,7 +187,7 @@ impl UI {
 
     fn open_tab(&mut self) -> Task<Message> {
         let (local_terminal, terminal_task) =
-            LocalTerminal::start(Some(Font::with_name("3270 Nerd Font Mono")));
+            LocalTerminal::start(Some(Font::with_name("RobotoMono Nerd Font")));
         let id = self.new_terminal_id;
         self.new_terminal_id += 1;
 
@@ -318,7 +314,7 @@ impl UI {
             window::close_events().map(|_| Message::WindowClosed),
             Subscription::run(hotkey_sub),
             keyboard::on_key_press(|key, modifiers| match key {
-                keyboard::Key::Named(keyboard::key::Named::F12) => Some(Message::CloseWindow),
+                keyboard::Key::Named(keyboard::key::Named::Pause) => Some(Message::Hotkey),
                 keyboard::Key::Character(c) => match c.as_str() {
                     "t" | "T" => {
                         if modifiers.control() && modifiers.shift() {
@@ -344,7 +340,7 @@ fn hotkey_sub() -> impl Stream<Item = Message> {
         loop {
             if let Ok(event) = receiver.try_recv() {
                 if event.state() == HotKeyState::Pressed {
-                    sender.send(Message::Hotkey(event.id)).await;
+                    sender.send(Message::Hotkey).await;
                 }
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;

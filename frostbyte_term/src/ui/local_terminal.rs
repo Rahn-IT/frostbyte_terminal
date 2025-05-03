@@ -37,7 +37,7 @@ impl LocalTerminal {
         let size = pty::TerminalSize { cols: 80, rows: 24 };
         let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
         let mut display = display.random_id().key_filter(|key, modifiers| match key {
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::F12) => true,
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::Pause) => true,
             _ => modifiers.control() && modifiers.shift(),
         });
 
