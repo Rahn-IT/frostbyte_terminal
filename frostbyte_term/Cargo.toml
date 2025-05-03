@@ -10,3 +10,6 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 sipper = { workspace = true }
 svalin_sysctl = { path = "../svalin_sysctl" }
+uuid = { version = "1.16.0", features = ["v4"] }
+iced_aw = { version = "0.12.2", features = ["tab_bar", "tabs"] }
+global-hotkey = "0.6.4"

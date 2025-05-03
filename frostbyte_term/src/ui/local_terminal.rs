@@ -17,6 +17,7 @@ pub enum Message {
 
 pub enum Action {
     Run(Task<Message>),
+    Close,
     None,
 }
 
@@ -47,7 +48,7 @@ impl LocalTerminal {
                 state: State::Starting,
                 display,
             },
-            Task::batch(vec![display_task.map(Message::Terminal), start_task]),
+            Task::batch([display_task.map(Message::Terminal), start_task]),
         )
     }
 
@@ -61,7 +62,6 @@ impl LocalTerminal {
                     while let Some(chunk) = output.recv().await {
                         sender.send(Message::Output(chunk)).await;
                     }
-                    println!("no more messages");
 
                     sender.send(Message::Closed).await;
                 });
@@ -103,7 +103,7 @@ impl LocalTerminal {
             Message::Closed => {
                 self.state = State::Closed;
 
-                Action::None
+                Action::Close
             }
         }
     }
