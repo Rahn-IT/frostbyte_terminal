@@ -4,7 +4,7 @@ use std::{
 };
 
 use iced::{
-    Border, Color, Element, Length, Point, Rectangle, Size, Task, Vector,
+    Border, Color, Element, Font, Length, Point, Rectangle, Size, Task, Vector,
     advanced::{
         Shell, Text,
         graphics::core::widget,
@@ -56,6 +56,7 @@ pub struct Terminal {
     key_filter: Option<Box<dyn Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool>>,
     // here to abort the task on drop
     _handle: Handle,
+    font: Font,
 }
 
 #[derive(Debug)]
@@ -119,6 +120,7 @@ impl Terminal {
                 id: None,
                 _handle: handle,
                 key_filter: None,
+                font: Font::MONOSPACE,
             },
             task,
         )
@@ -141,6 +143,11 @@ impl Terminal {
         F: 'static,
     {
         self.key_filter = Some(Box::new(key_filter));
+        self
+    }
+
+    pub fn font(mut self, font: impl Into<Font>) -> Self {
+        self.font = font.into();
         self
     }
 
@@ -203,7 +210,7 @@ impl Terminal {
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
-        Element::new(TerminalWidget::new(self, iced::Font::MONOSPACE).id_maybe(self.id.clone()))
+        Element::new(TerminalWidget::new(self, self.font).id_maybe(self.id.clone()))
             .map(MessageWrapper)
     }
 }

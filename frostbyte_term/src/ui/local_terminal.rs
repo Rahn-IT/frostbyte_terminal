@@ -33,13 +33,17 @@ pub struct LocalTerminal {
 }
 
 impl LocalTerminal {
-    pub fn start() -> (Self, Task<Message>) {
+    pub fn start(font: Option<iced::Font>) -> (Self, Task<Message>) {
         let size = pty::TerminalSize { cols: 80, rows: 24 };
         let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
-        let display = display.random_id().key_filter(|key, modifiers| match key {
+        let mut display = display.random_id().key_filter(|key, modifiers| match key {
             iced::keyboard::Key::Named(iced::keyboard::key::Named::F12) => true,
             _ => modifiers.control() && modifiers.shift(),
         });
+
+        if let Some(font) = font {
+            display = display.font(font);
+        }
 
         let start_task = Task::future(async {
             let (process, output) = PtyProcess::shell(size).await.unwrap();

@@ -8,8 +8,7 @@ use global_hotkey::{
     hotkey::{HotKey, Modifiers},
 };
 use iced::{
-    Background, Color, Element, Length, Subscription, Task,
-    advanced::subscription,
+    Color, Element, Font, Length, Subscription, Task,
     futures::SinkExt,
     keyboard,
     stream::channel,
@@ -191,7 +190,8 @@ impl UI {
     }
 
     fn open_tab(&mut self) -> Task<Message> {
-        let (local_terminal, terminal_task) = LocalTerminal::start();
+        let (local_terminal, terminal_task) =
+            LocalTerminal::start(Some(Font::with_name("3270 Nerd Font Mono")));
         let id = self.new_terminal_id;
         self.new_terminal_id += 1;
 
