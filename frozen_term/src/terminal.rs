@@ -53,6 +53,7 @@ pub enum Action {
 pub struct Terminal {
     term: wezterm_term::Terminal,
     id: Option<Id>,
+    key_filter: Option<Box<dyn Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool>>,
     // here to abort the task on drop
     _handle: Handle,
 }
@@ -117,6 +118,7 @@ impl Terminal {
                 term,
                 id: None,
                 _handle: handle,
+                key_filter: None,
             },
             task,
         )
@@ -129,6 +131,17 @@ impl Terminal {
 
     pub fn random_id(self) -> Self {
         self.id(Id(widget::Id::unique()))
+    }
+
+    /// Allows you to add a filter to stop the terminal from capturing keypresses you want to use for your application.
+    /// If the given filter returns `true`, the keypress will be ignored.
+    pub fn key_filter<F>(mut self, key_filter: F) -> Self
+    where
+        F: Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
+        F: 'static,
+    {
+        self.key_filter = Some(Box::new(key_filter));
+        self
     }
 
     pub fn focus<T>(&self) -> Task<T>
@@ -563,6 +576,12 @@ where
                 let state = tree.state.downcast_mut::<State<Renderer>>();
 
                 if state.focused {
+                    if let Some(filter) = &self.term.key_filter {
+                        if filter(&modified_key, &modifiers) {
+                            return iced::advanced::graphics::core::event::Status::Ignored;
+                        }
+                    }
+
                     let message = Message::KeyPress {
                         modified_key,
                         modifiers,

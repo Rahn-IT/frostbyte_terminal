@@ -1,12 +1,17 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use global_hotkey::{
-    GlobalHotKeyEvent, GlobalHotKeyManager,
+    GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
     hotkey::{HotKey, Modifiers},
 };
 use iced::{
     Element, Subscription, Task,
+    advanced::subscription,
     futures::SinkExt,
+    keyboard,
     stream::channel,
     widget::{column, text},
     window,
@@ -24,20 +29,27 @@ pub enum Message {
         id: u32,
         message: local_terminal::Message,
     },
+    OpenTab,
     SwitchTab(u32),
     CloseTab(u32),
     Hotkey(u32),
-    Opened(window::Id),
+    WindowOpened(window::Id),
+    WindowFocused,
+    WindowUnfocused,
+    CloseWindow,
     WindowClosed,
+    None,
 }
 
 pub struct UI {
     terminals: BTreeMap<u32, LocalTerminal>,
     window_id: Option<window::Id>,
+    last_window_open: Instant,
     selected_tab: u32,
     new_terminal_id: u32,
     _hotkey_manager: GlobalHotKeyManager,
     f12_id: u32,
+    in_focus: bool,
 }
 
 impl Drop for UI {
@@ -63,6 +75,8 @@ impl UI {
                 new_terminal_id: 1,
                 _hotkey_manager: hotkey_manager,
                 f12_id,
+                in_focus: false,
+                last_window_open: Instant::now(),
             },
             Task::none(),
         )
@@ -86,29 +100,59 @@ impl UI {
                     local_terminal::Action::None => Task::none(),
                 }
             }
-            Message::Opened(_) => {
-                if let Some(term) = self.terminals.get(&self.selected_tab) {
-                    term.focus()
-                } else {
-                    Task::none()
-                }
-            }
+            Message::OpenTab => self.open_tab(),
             Message::SwitchTab(id) => self.switch_tab(id),
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey(id) => {
                 if id == self.f12_id {
                     println!("F12 pressed");
-                    if self.window_id.is_none() {
-                        return self.open_window();
-                    }
+                    return if let Some(id) = self.window_id {
+                        if self.in_focus {
+                            window::close(id)
+                        } else {
+                            window::gain_focus(id)
+                        }
+                    } else {
+                        self.open_window()
+                    };
                 }
 
                 Task::none()
+            }
+            Message::WindowOpened(id) => {
+                self.last_window_open = Instant::now();
+                if let Some(term) = self.terminals.get(&self.selected_tab) {
+                    println!("focusing terminal!");
+                    Task::batch([window::gain_focus(id), term.focus()])
+                } else {
+                    println!("missing tab to focus");
+                    Task::none()
+                }
+            }
+            Message::WindowFocused => {
+                self.in_focus = true;
+                Task::none()
+            }
+            Message::WindowUnfocused => {
+                self.in_focus = false;
+                Task::none()
+            }
+            Message::CloseWindow => {
+                if Instant::now().duration_since(self.last_window_open) < Duration::from_millis(200)
+                {
+                    Task::none()
+                } else if let Some(id) = self.window_id {
+                    self.window_id = None;
+                    return window::close(id);
+                } else {
+                    Task::none()
+                }
             }
             Message::WindowClosed => {
                 self.window_id = None;
                 Task::none()
             }
+            Message::None => Task::none(),
         }
     }
 
@@ -134,7 +178,7 @@ impl UI {
             let (id, task) = window::open(settings);
             self.window_id = Some(id);
 
-            let task = task.map(Message::Opened);
+            let task = task.map(Message::WindowOpened);
 
             if self.terminals.is_empty() {
                 Task::batch([self.open_tab(), task])
@@ -149,10 +193,14 @@ impl UI {
         let id = self.new_terminal_id;
         self.new_terminal_id += 1;
 
+        let focus_task = local_terminal.focus();
         self.terminals.insert(id, local_terminal);
         self.selected_tab = id;
 
-        terminal_task.map(move |message| Message::LocalTerminal { id, message })
+        Task::batch([
+            terminal_task.map(move |message| Message::LocalTerminal { id, message }),
+            focus_task,
+        ])
     }
 
     fn close_tab(&mut self, id: u32) -> Task<Message> {
@@ -225,8 +273,32 @@ impl UI {
 
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
+            window::events().map(|(_id, event)| match event {
+                window::Event::Closed => Message::WindowClosed,
+                window::Event::Focused => Message::WindowFocused,
+                window::Event::Unfocused => Message::WindowUnfocused,
+                _ => Message::None,
+            }),
             window::close_events().map(|_| Message::WindowClosed),
             Subscription::run(hotkey_sub),
+            keyboard::on_key_press(|key, modifiers| match key {
+                keyboard::Key::Named(keyboard::key::Named::F12) => {
+                    println!("F12 in iced pressed!");
+                    Some(Message::CloseWindow)
+                }
+                keyboard::Key::Character(c) => match c.as_str() {
+                    "t" | "T" => {
+                        if modifiers.control() && modifiers.shift() {
+                            Some(Message::OpenTab)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                },
+                keyboard::Key::Named(_named) => None,
+                keyboard::Key::Unidentified => None,
+            }),
         ])
     }
 }
@@ -238,7 +310,9 @@ fn hotkey_sub() -> impl Stream<Item = Message> {
         // poll for global hotkey events every 50ms
         loop {
             if let Ok(event) = receiver.try_recv() {
-                sender.send(Message::Hotkey(event.id)).await;
+                if event.state() == HotKeyState::Pressed {
+                    sender.send(Message::Hotkey(event.id)).await;
+                }
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }

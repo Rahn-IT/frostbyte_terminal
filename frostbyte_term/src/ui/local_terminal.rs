@@ -36,7 +36,10 @@ impl LocalTerminal {
     pub fn start() -> (Self, Task<Message>) {
         let size = pty::TerminalSize { cols: 80, rows: 24 };
         let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
-        let display = display.random_id();
+        let display = display.random_id().key_filter(|key, modifiers| match key {
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::F12) => true,
+            _ => modifiers.control() && modifiers.shift(),
+        });
 
         let start_task = Task::future(async {
             let (process, output) = PtyProcess::shell(size).await.unwrap();
