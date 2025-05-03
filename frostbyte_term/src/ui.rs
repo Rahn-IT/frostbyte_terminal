@@ -8,12 +8,12 @@ use global_hotkey::{
     hotkey::{HotKey, Modifiers},
 };
 use iced::{
-    Element, Subscription, Task,
+    Background, Color, Element, Length, Subscription, Task,
     advanced::subscription,
     futures::SinkExt,
     keyboard,
     stream::channel,
-    widget::{column, text},
+    widget::{button, center, column, row, text},
     window,
 };
 use iced_aw::{TabLabel, tab_bar};
@@ -31,6 +31,7 @@ pub enum Message {
     },
     OpenTab,
     SwitchTab(u32),
+    FocusTab(u32),
     CloseTab(u32),
     Hotkey(u32),
     WindowOpened(window::Id),
@@ -50,12 +51,6 @@ pub struct UI {
     _hotkey_manager: GlobalHotKeyManager,
     f12_id: u32,
     in_focus: bool,
-}
-
-impl Drop for UI {
-    fn drop(&mut self) {
-        println!("Dropping UI");
-    }
 }
 
 impl UI {
@@ -102,10 +97,16 @@ impl UI {
             }
             Message::OpenTab => self.open_tab(),
             Message::SwitchTab(id) => self.switch_tab(id),
+            Message::FocusTab(id) => {
+                if let Some(term) = self.terminals.get(&id) {
+                    term.focus()
+                } else {
+                    Task::none()
+                }
+            }
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey(id) => {
                 if id == self.f12_id {
-                    println!("F12 pressed");
                     return if let Some(id) = self.window_id {
                         if self.in_focus {
                             window::close(id)
@@ -122,10 +123,8 @@ impl UI {
             Message::WindowOpened(id) => {
                 self.last_window_open = Instant::now();
                 if let Some(term) = self.terminals.get(&self.selected_tab) {
-                    println!("focusing terminal!");
                     Task::batch([window::gain_focus(id), term.focus()])
                 } else {
-                    println!("missing tab to focus");
                     Task::none()
                 }
             }
@@ -138,6 +137,8 @@ impl UI {
                 Task::none()
             }
             Message::CloseWindow => {
+                // The hotkey can trigger the application itself when opening the window.
+                // Which would cause the window to immediatly close again, this helps
                 if Instant::now().duration_since(self.last_window_open) < Duration::from_millis(200)
                 {
                     Task::none()
@@ -172,6 +173,7 @@ impl UI {
                     height: 600.0,
                 },
                 level: window::Level::AlwaysOnTop,
+
                 ..Default::default()
             };
 
@@ -193,22 +195,28 @@ impl UI {
         let id = self.new_terminal_id;
         self.new_terminal_id += 1;
 
-        let focus_task = local_terminal.focus();
         self.terminals.insert(id, local_terminal);
         self.selected_tab = id;
 
         Task::batch([
             terminal_task.map(move |message| Message::LocalTerminal { id, message }),
-            focus_task,
+            self.focus_tab(id),
         ])
+    }
+
+    fn focus_tab(&self, id: u32) -> Task<Message> {
+        Task::future(async move {
+            tokio::time::sleep(Duration::from_micros(300)).await;
+            Message::FocusTab(id)
+        })
     }
 
     fn close_tab(&mut self, id: u32) -> Task<Message> {
         self.terminals.remove(&id);
 
-        if let Some((id, term)) = self.terminals.iter().next() {
+        if let Some((id, _term)) = self.terminals.iter().next() {
             self.selected_tab = *id;
-            term.focus()
+            self.focus_tab(*id)
         } else {
             let id = self.window_id.clone();
             if let Some(id) = id {
@@ -221,9 +229,9 @@ impl UI {
     }
 
     fn switch_tab(&mut self, id: u32) -> Task<Message> {
-        if let Some(terminal) = self.terminals.get(&id) {
+        if let Some(_terminal) = self.terminals.get(&id) {
             self.selected_tab = id;
-            terminal.focus()
+            self.focus_tab(id)
         } else {
             Task::none()
         }
@@ -248,8 +256,11 @@ impl UI {
                 .collect(),
             Message::SwitchTab,
         )
+        .set_active_tab(&self.selected_tab)
+        // .width(Length::Shrink)
+        .height(Length::Fill)
+        // .tab_width(Length::Fixed(444.0))
         .on_close(Message::CloseTab);
-
         column![
             tab_view.map(move |message| {
                 Message::LocalTerminal {
@@ -257,7 +268,32 @@ impl UI {
                     message,
                 }
             }),
-            tab_bar,
+            row![
+                tab_bar,
+                button(center(text("New Tab")))
+                    .width(200)
+                    .height(Length::Fill)
+                    .on_press(Message::OpenTab),
+                button(center(text("X")))
+                    .style(|_, status| {
+                        let color = match status {
+                            button::Status::Active | button::Status::Pressed => {
+                                Color::from_rgb(0.8, 0.0, 0.0)
+                            }
+                            button::Status::Hovered => Color::from_rgb(0.8, 0.2, 0.2),
+                            button::Status::Disabled => Color::from_rgb(0.5, 0.5, 0.5),
+                        };
+                        button::Style {
+                            background: Some(color.into()),
+                            text_color: Color::WHITE,
+                            ..Default::default()
+                        }
+                    })
+                    .width(40)
+                    .height(Length::Fill)
+                    .on_press(Message::CloseWindow)
+            ]
+            .height(40)
         ]
         .into()
     }
@@ -282,10 +318,7 @@ impl UI {
             window::close_events().map(|_| Message::WindowClosed),
             Subscription::run(hotkey_sub),
             keyboard::on_key_press(|key, modifiers| match key {
-                keyboard::Key::Named(keyboard::key::Named::F12) => {
-                    println!("F12 in iced pressed!");
-                    Some(Message::CloseWindow)
-                }
+                keyboard::Key::Named(keyboard::key::Named::F12) => Some(Message::CloseWindow),
                 keyboard::Key::Character(c) => match c.as_str() {
                     "t" | "T" => {
                         if modifiers.control() && modifiers.shift() {
