@@ -12,3 +12,5 @@ sipper = { workspace = true }
 svalin_sysctl = { path = "../svalin_sysctl" }
 iced_aw = { version = "0.12.2", features = ["tab_bar", "tabs"] }
 global-hotkey = "0.6.4"
+tray-icon = "0.20.1"
+gtk = "0.18.2"

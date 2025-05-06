@@ -33,13 +33,13 @@ pub struct LocalTerminal {
 }
 
 impl LocalTerminal {
-    pub fn start(font: Option<iced::Font>) -> (Self, Task<Message>) {
+    pub fn start(
+        font: Option<iced::Font>,
+        key_filter: impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
+    ) -> (Self, Task<Message>) {
         let size = pty::TerminalSize { cols: 80, rows: 24 };
         let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
-        let mut display = display.random_id().key_filter(|key, modifiers| match key {
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::Pause) => true,
-            _ => modifiers.control() && modifiers.shift(),
-        });
+        let mut display = display.random_id().key_filter(key_filter);
 
         if let Some(font) = font {
             display = display.font(font);
@@ -59,6 +59,7 @@ impl LocalTerminal {
         )
     }
 
+    #[must_use]
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::Opened(arc) => {
@@ -83,11 +84,13 @@ impl LocalTerminal {
                 let action = self.display.update(message);
 
                 match action {
-                    frozen_term::Action::None => (),
+                    frozen_term::Action::None => Action::None,
+                    frozen_term::Action::Run(task) => Action::Run(task.map(Message::Terminal)),
                     frozen_term::Action::Input(input) => {
                         if let State::Active(pty) = &self.state {
                             pty.try_write(input).unwrap();
                         }
+                        Action::None
                     }
                     frozen_term::Action::Resize(size) => {
                         if let State::Active(pty) = &self.state {
@@ -97,10 +100,9 @@ impl LocalTerminal {
                             })
                             .unwrap();
                         }
+                        Action::None
                     }
                 }
-
-                Action::None
             }
             Message::Output(output) => {
                 self.display.advance_bytes(output);

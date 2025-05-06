@@ -42,10 +42,12 @@ pub enum Message {
         modifiers: keyboard::Modifiers,
     },
     Input(Vec<u8>),
+    Paste(Option<String>),
 }
 
 pub enum Action {
     None,
+    Run(Task<MessageWrapper>),
     Resize(TerminalSize),
     Input(Vec<u8>),
 }
@@ -137,11 +139,10 @@ impl Terminal {
 
     /// Allows you to add a filter to stop the terminal from capturing keypresses you want to use for your application.
     /// If the given filter returns `true`, the keypress will be ignored.
-    pub fn key_filter<F>(mut self, key_filter: F) -> Self
-    where
-        F: Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
-        F: 'static,
-    {
+    pub fn key_filter(
+        mut self,
+        key_filter: impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
+    ) -> Self {
         self.key_filter = Some(Box::new(key_filter));
         self
     }
@@ -180,6 +181,7 @@ impl Terminal {
         self.term.advance_bytes(bytes)
     }
 
+    #[must_use]
     pub fn update(&mut self, message: MessageWrapper) -> Action {
         match message.0 {
             Message::Resize(size) => {
@@ -187,16 +189,33 @@ impl Terminal {
                 Action::Resize(size)
             }
             Message::KeyPress {
-                modified_key: key,
+                modified_key,
                 modifiers,
             } => {
-                if let Some((key, modifiers)) = transform_key(key, modifiers) {
+                if modified_key == iced::keyboard::Key::Character("V".into())
+                    && modifiers.control()
+                    && modifiers.shift()
+                {
+                    return Action::Run(
+                        iced::clipboard::read()
+                            .map(Message::Paste)
+                            .map(MessageWrapper),
+                    );
+                }
+
+                if let Some((key, modifiers)) = transform_key(modified_key, modifiers) {
                     self.term.key_down(key, modifiers).unwrap();
                 }
 
                 Action::None
             }
             Message::Input(input) => Action::Input(input),
+            Message::Paste(paste) => {
+                if let Some(paste) = paste {
+                    self.term.send_paste(&paste).unwrap();
+                }
+                Action::None
+            }
         }
     }
 

@@ -1,12 +1,6 @@
-use std::{
-    collections::BTreeMap,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, fmt::Debug, time::Duration};
 
-use global_hotkey::{
-    GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
-    hotkey::{HotKey, Modifiers},
-};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
     Color, Element, Font, Length, Subscription, Task,
     futures::SinkExt,
@@ -18,6 +12,7 @@ use iced::{
 use iced_aw::{TabLabel, tab_bar};
 use local_terminal::LocalTerminal;
 use sipper::Stream;
+use tray_icon::TrayIconBuilder;
 
 mod local_terminal;
 
@@ -34,32 +29,57 @@ pub enum Message {
     CloseTab(u32),
     Hotkey,
     WindowOpened(window::Id),
-    WindowFocused,
-    WindowUnfocused,
     CloseWindow,
     WindowClosed,
+    Shutdown,
     None,
 }
 
 pub struct UI {
     terminals: BTreeMap<u32, LocalTerminal>,
     window_id: Option<window::Id>,
-    last_window_open: Instant,
     selected_tab: u32,
     new_terminal_id: u32,
     _hotkey_manager: GlobalHotKeyManager,
+    hotkey: Hotkey,
     hotkey_id: u32,
-    in_focus: bool,
+}
+
+impl Debug for UI {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UI")
+            .field("window_id", &self.window_id)
+            .field("selected_tab", &self.selected_tab)
+            .field("new_terminal_id", &self.new_terminal_id)
+            .field("hotkey_id", &self.hotkey_id)
+            .finish()
+    }
 }
 
 impl UI {
     pub fn start() -> (Self, Task<Message>) {
+        std::thread::spawn(|| {
+            gtk::init().unwrap();
+
+            let close_item = tray_icon::menu::MenuItem::new("Exit Frostbyte", true, None);
+            let tray_menu = tray_icon::menu::Menu::new();
+            tray_menu.append(&close_item).unwrap();
+            let _tray_icon = TrayIconBuilder::new()
+                .with_tooltip("Frostbyte")
+                .with_menu(Box::new(tray_menu))
+                .build()
+                .unwrap();
+
+            gtk::main();
+        });
+
         let terminals = BTreeMap::new();
 
-        let hotkey = HotKey::new(None, global_hotkey::hotkey::Code::Pause);
-        let hotkey_id = hotkey.id;
+        let hotkey = Hotkey::F12;
+        let global_hotkey = hotkey.global_hotkey();
+        let hotkey_id = global_hotkey.id;
         let hotkey_manager = GlobalHotKeyManager::new().unwrap();
-        hotkey_manager.register(hotkey).unwrap();
+        hotkey_manager.register(global_hotkey).unwrap();
 
         (
             Self {
@@ -69,13 +89,13 @@ impl UI {
                 new_terminal_id: 1,
                 _hotkey_manager: hotkey_manager,
                 hotkey_id,
-                in_focus: false,
-                last_window_open: Instant::now(),
+                hotkey,
             },
             Task::none(),
         )
     }
 
+    #[must_use]
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::LocalTerminal { id, message } => {
@@ -106,38 +126,20 @@ impl UI {
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey => {
                 return if let Some(id) = self.window_id {
-                    if self.in_focus {
-                        window::close(id)
-                    } else {
-                        window::gain_focus(id)
-                    }
+                    window::close(id)
                 } else {
                     self.open_window()
                 };
             }
             Message::WindowOpened(id) => {
-                self.last_window_open = Instant::now();
                 if let Some(term) = self.terminals.get(&self.selected_tab) {
                     Task::batch([window::gain_focus(id), term.focus()])
                 } else {
                     Task::none()
                 }
             }
-            Message::WindowFocused => {
-                self.in_focus = true;
-                Task::none()
-            }
-            Message::WindowUnfocused => {
-                self.in_focus = false;
-                Task::none()
-            }
             Message::CloseWindow => {
-                // The hotkey can trigger the application itself when opening the window.
-                // Which would cause the window to immediatly close again, this helps
-                if Instant::now().duration_since(self.last_window_open) < Duration::from_millis(200)
-                {
-                    Task::none()
-                } else if let Some(id) = self.window_id {
+                if let Some(id) = self.window_id {
                     self.window_id = None;
                     return window::close(id);
                 } else {
@@ -148,6 +150,7 @@ impl UI {
                 self.window_id = None;
                 Task::none()
             }
+            Message::Shutdown => iced::exit(),
             Message::None => Task::none(),
         }
     }
@@ -186,8 +189,10 @@ impl UI {
     }
 
     fn open_tab(&mut self) -> Task<Message> {
-        let (local_terminal, terminal_task) =
-            LocalTerminal::start(Some(Font::with_name("RobotoMono Nerd Font")));
+        let (local_terminal, terminal_task) = LocalTerminal::start(
+            Some(Font::with_name("RobotoMono Nerd Font")),
+            self.hotkey.filter(),
+        );
         let id = self.new_terminal_id;
         self.new_terminal_id += 1;
 
@@ -233,7 +238,7 @@ impl UI {
         }
     }
 
-    pub fn view(&self, id: window::Id) -> Element<Message> {
+    pub fn view(&self, _id: window::Id) -> Element<Message> {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
         let tab_view = match selected_terminal {
@@ -294,7 +299,7 @@ impl UI {
         .into()
     }
 
-    pub fn title(&self, id: window::Id) -> String {
+    pub fn title(&self, _id: window::Id) -> String {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
         match selected_terminal {
@@ -307,14 +312,12 @@ impl UI {
         Subscription::batch([
             window::events().map(|(_id, event)| match event {
                 window::Event::Closed => Message::WindowClosed,
-                window::Event::Focused => Message::WindowFocused,
-                window::Event::Unfocused => Message::WindowUnfocused,
                 _ => Message::None,
             }),
             window::close_events().map(|_| Message::WindowClosed),
-            Subscription::run(hotkey_sub),
+            Subscription::run(poll_events_sub),
             keyboard::on_key_press(|key, modifiers| match key {
-                keyboard::Key::Named(keyboard::key::Named::Pause) => Some(Message::Hotkey),
+                keyboard::Key::Named(keyboard::key::Named::Pause) => None,
                 keyboard::Key::Character(c) => match c.as_str() {
                     "t" | "T" => {
                         if modifiers.control() && modifiers.shift() {
@@ -333,17 +336,67 @@ impl UI {
 }
 
 /// Stolen from the tauri global hotkey example for iced
-fn hotkey_sub() -> impl Stream<Item = Message> {
+fn poll_events_sub() -> impl Stream<Item = Message> {
     channel(32, |mut sender| async move {
-        let receiver = GlobalHotKeyEvent::receiver();
+        let hotkey_receiver = GlobalHotKeyEvent::receiver();
+
+        let tray_receiver = tray_icon::menu::MenuEvent::receiver();
         // poll for global hotkey events every 50ms
         loop {
-            if let Ok(event) = receiver.try_recv() {
-                if event.state() == HotKeyState::Pressed {
-                    sender.send(Message::Hotkey).await;
+            if let Ok(event) = hotkey_receiver.try_recv() {
+                if event.state() == HotKeyState::Released {
+                    if let Err(err) = sender.send(Message::Hotkey).await {
+                        eprintln!("Error sending hotkey message: {}", err);
+                    }
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if let Ok(_event) = tray_receiver.try_recv() {
+                if let Err(err) = sender.send(Message::Shutdown).await {
+                    eprintln!("Error sending tray message: {}", err);
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
     })
+}
+
+enum Hotkey {
+    F12,
+}
+
+impl Hotkey {
+    fn global_hotkey(&self) -> hotkey::HotKey {
+        match self {
+            Hotkey::F12 => hotkey::HotKey::new(None, hotkey::Code::F12),
+        }
+    }
+
+    fn iced(&self) -> (iced::keyboard::Key, iced::keyboard::Modifiers) {
+        match self {
+            Hotkey::F12 => (
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::F12),
+                iced::keyboard::Modifiers::empty(),
+            ),
+        }
+    }
+
+    fn filter(
+        &self,
+    ) -> impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool {
+        let (hotkey, hotkey_modifiers) = self.iced();
+        move |key: &iced::keyboard::Key, modifiers: &iced::keyboard::Modifiers| {
+            if key == &iced::keyboard::Key::Character("T".into())
+                && modifiers.control()
+                && modifiers.shift()
+            {
+                return true;
+            };
+
+            if key == &hotkey && modifiers == &hotkey_modifiers {
+                return true;
+            }
+
+            false
+        }
+    }
 }
