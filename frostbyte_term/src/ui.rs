@@ -59,7 +59,10 @@ impl Debug for UI {
 impl UI {
     pub fn start() -> (Self, Task<Message>) {
         std::thread::spawn(|| {
-            gtk::init().unwrap();
+            #[cfg(unix)]
+            {
+                gtk::init().unwrap();
+            }
 
             let close_item = tray_icon::menu::MenuItem::new("Exit Frostbyte", true, None);
             let tray_menu = tray_icon::menu::Menu::new();
@@ -70,12 +73,18 @@ impl UI {
                 .build()
                 .unwrap();
 
-            gtk::main();
+            #[cfg(unix)]
+            {
+                gtk::main();
+            }
         });
 
         let terminals = BTreeMap::new();
 
+        #[cfg(unix)]
         let hotkey = Hotkey::F12;
+        #[cfg(windows)]
+        let hotkey = Hotkey::AltF12;
         let global_hotkey = hotkey.global_hotkey();
         let hotkey_id = global_hotkey.id;
         let hotkey_manager = GlobalHotKeyManager::new().unwrap();
@@ -362,20 +371,26 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
 
 enum Hotkey {
     F12,
+    AltF12,
 }
 
 impl Hotkey {
     fn global_hotkey(&self) -> hotkey::HotKey {
         match self {
-            Hotkey::F12 => hotkey::HotKey::new(None, hotkey::Code::F12),
+            Self::F12 => hotkey::HotKey::new(None, hotkey::Code::F12),
+            Self::AltF12 => hotkey::HotKey::new(Some(hotkey::Modifiers::ALT), hotkey::Code::F12),
         }
     }
 
     fn iced(&self) -> (iced::keyboard::Key, iced::keyboard::Modifiers) {
         match self {
-            Hotkey::F12 => (
+            Self::F12 => (
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::F12),
                 iced::keyboard::Modifiers::empty(),
+            ),
+            Self::AltF12 => (
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::F12),
+                iced::keyboard::Modifiers::ALT,
             ),
         }
     }

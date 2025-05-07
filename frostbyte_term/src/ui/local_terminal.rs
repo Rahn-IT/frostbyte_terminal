@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use async_pty::PtyProcess;
 use iced::{
     Element, Task,
     widget::{center, text},
 };
 use sipper::sipper;
-use svalin_sysctl::pty::{self, PtyProcess};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -37,7 +37,7 @@ impl LocalTerminal {
         font: Option<iced::Font>,
         key_filter: impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
     ) -> (Self, Task<Message>) {
-        let size = pty::TerminalSize { cols: 80, rows: 24 };
+        let size = async_pty::TerminalSize { cols: 80, rows: 24 };
         let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
         let mut display = display.random_id().key_filter(key_filter);
 
@@ -94,7 +94,7 @@ impl LocalTerminal {
                     }
                     frozen_term::Action::Resize(size) => {
                         if let State::Active(pty) = &self.state {
-                            pty.try_resize(pty::TerminalSize {
+                            pty.try_resize(async_pty::TerminalSize {
                                 rows: size.rows as u16,
                                 cols: size.cols as u16,
                             })
@@ -120,7 +120,9 @@ impl LocalTerminal {
     pub fn view(&self) -> Element<Message> {
         match &self.state {
             State::Starting => center(text!("opening pty...")).into(),
-            State::Active(_) => self.display.view().map(Message::Terminal),
+            State::Active(_) => center(self.display.view().map(Message::Terminal))
+                .padding(10)
+                .into(),
             State::Closed => center(text!("pty closed")).into(),
         }
     }
