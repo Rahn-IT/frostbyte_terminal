@@ -370,7 +370,9 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
 }
 
 enum Hotkey {
+    #[allow(dead_code)]
     F12,
+    #[allow(dead_code)]
     AltF12,
 }
 
