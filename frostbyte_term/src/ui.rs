@@ -12,7 +12,7 @@ use iced::{
 use iced_aw::{TabLabel, tab_bar};
 use local_terminal::LocalTerminal;
 use sipper::Stream;
-use tray_icon::TrayIconBuilder;
+use tray_icon::{TrayIcon, TrayIconBuilder};
 
 mod local_terminal;
 
@@ -43,6 +43,7 @@ pub struct UI {
     _hotkey_manager: GlobalHotKeyManager,
     hotkey: Hotkey,
     hotkey_id: u32,
+    _tray_icon: Option<TrayIcon>,
 }
 
 impl Debug for UI {
@@ -57,27 +58,30 @@ impl Debug for UI {
 }
 
 impl UI {
+    fn create_tray_icon() -> TrayIcon {
+        let close_item = tray_icon::menu::MenuItem::new("Exit Frostbyte", true, None);
+        let tray_menu = tray_icon::menu::Menu::new();
+        tray_menu.append(&close_item).unwrap();
+
+        TrayIconBuilder::new()
+            .with_tooltip("Frostbyte")
+            .with_menu(Box::new(tray_menu))
+            .build()
+            .unwrap()
+    }
+
     pub fn start() -> (Self, Task<Message>) {
+        #[cfg(unix)]
         std::thread::spawn(|| {
-            #[cfg(unix)]
-            {
-                gtk::init().unwrap();
-            }
+            gtk::init().unwrap();
+            let _tray_icon = Self::create_tray_icon();
 
-            let close_item = tray_icon::menu::MenuItem::new("Exit Frostbyte", true, None);
-            let tray_menu = tray_icon::menu::Menu::new();
-            tray_menu.append(&close_item).unwrap();
-            let _tray_icon = TrayIconBuilder::new()
-                .with_tooltip("Frostbyte")
-                .with_menu(Box::new(tray_menu))
-                .build()
-                .unwrap();
-
-            #[cfg(unix)]
-            {
-                gtk::main();
-            }
+            gtk::main();
         });
+        #[cfg(unix)]
+        let tray_icon = None;
+        #[cfg(windows)]
+        let tray_icon = Some(Self::create_tray_icon());
 
         let terminals = BTreeMap::new();
 
@@ -99,6 +103,7 @@ impl UI {
                 _hotkey_manager: hotkey_manager,
                 hotkey_id,
                 hotkey,
+                _tray_icon: tray_icon,
             },
             Task::none(),
         )
