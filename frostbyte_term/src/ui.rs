@@ -10,6 +10,7 @@ use iced::{
     window,
 };
 use iced_aw::{TabLabel, tab_bar};
+use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
 use local_terminal::LocalTerminal;
 use sipper::Stream;
 use tray_icon::{TrayIcon, TrayIconBuilder};
@@ -17,6 +18,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 mod local_terminal;
 
 /// Messages emitted by the application and its widgets.
+#[iced_layershell::to_layer_message(multi)]
 #[derive(Debug, Clone)]
 pub enum Message {
     LocalTerminal {
@@ -35,6 +37,11 @@ pub enum Message {
     None,
 }
 
+enum Mode {
+    Winit,
+    Layershell,
+}
+
 pub struct UI {
     terminals: BTreeMap<u32, LocalTerminal>,
     window_id: Option<window::Id>,
@@ -44,6 +51,7 @@ pub struct UI {
     hotkey: Hotkey,
     hotkey_id: u32,
     _tray_icon: Option<TrayIcon>,
+    mode: Mode,
 }
 
 impl Debug for UI {
@@ -70,7 +78,15 @@ impl UI {
             .unwrap()
     }
 
-    pub fn start() -> (Self, Task<Message>) {
+    pub fn start_winit() -> (Self, Task<Message>) {
+        Self::start_in_mode(Mode::Winit)
+    }
+
+    pub fn start_layershell() -> (Self, Task<Message>) {
+        Self::start_in_mode(Mode::Layershell)
+    }
+
+    fn start_in_mode(mode: Mode) -> (Self, Task<Message>) {
         #[cfg(unix)]
         std::thread::spawn(|| {
             gtk::init().unwrap();
@@ -104,13 +120,14 @@ impl UI {
                 hotkey_id,
                 hotkey,
                 _tray_icon: tray_icon,
+                mode,
             },
             Task::none(),
         )
     }
 
     #[must_use]
-    pub fn update(&mut self, message: Message) -> Task<Message> {
+    pub fn update<'a>(&'a mut self, message: Message) -> Task<Message> {
         match message {
             Message::LocalTerminal { id, message } => {
                 let term = match self.terminals.get_mut(&id) {
@@ -161,11 +178,25 @@ impl UI {
                 }
             }
             Message::WindowClosed => {
-                self.window_id = None;
+                if let Some(id) = self.window_id {
+                    self.remove_id(id);
+                }
                 Task::none()
             }
             Message::Shutdown => iced::exit(),
             Message::None => Task::none(),
+            Message::AnchorChange { .. } => unreachable!(),
+            Message::SetInputRegion { .. } => unreachable!(),
+            Message::AnchorSizeChange { .. } => unreachable!(),
+            Message::LayerChange { .. } => unreachable!(),
+            Message::MarginChange { .. } => unreachable!(),
+            Message::SizeChange { .. } => unreachable!(),
+            Message::VirtualKeyboardPressed { .. } => unreachable!(),
+            Message::NewLayerShell { .. } => unreachable!(),
+            Message::NewPopUp { .. } => unreachable!(),
+            Message::NewMenu { .. } => unreachable!(),
+            Message::RemoveWindow(_) => unreachable!(),
+            Message::ForgetLastOutput => unreachable!(),
         }
     }
 
@@ -173,26 +204,45 @@ impl UI {
         if let Some(id) = self.window_id {
             window::gain_focus(id)
         } else {
-            let settings = window::Settings {
-                decorations: false,
-                resizable: false,
-                position: window::Position::SpecificWith(|window_size, monitor_res| {
-                    let x = (monitor_res.width - window_size.width) / 2.0;
-                    iced::Point::new(x, 0.0)
-                }),
-                size: iced::Size {
-                    width: 2000.0,
-                    height: 600.0,
-                },
-                level: window::Level::AlwaysOnTop,
+            let task = match self.mode {
+                Mode::Winit => {
+                    let settings = window::Settings {
+                        decorations: false,
+                        resizable: false,
+                        position: window::Position::SpecificWith(|window_size, monitor_res| {
+                            let x = (monitor_res.width - window_size.width) / 2.0;
+                            iced::Point::new(x, 0.0)
+                        }),
+                        size: iced::Size {
+                            width: 2000.0,
+                            height: 600.0,
+                        },
+                        level: window::Level::AlwaysOnTop,
 
-                ..Default::default()
+                        ..Default::default()
+                    };
+
+                    let (id, task) = window::open(settings);
+                    self.window_id = Some(id);
+
+                    task.map(Message::WindowOpened)
+                }
+                Mode::Layershell => {
+                    let id = window::Id::unique();
+
+                    self.window_id = Some(id);
+                    Task::done(Message::NewLayerShell {
+                        settings: NewLayerShellSettings {
+                            anchor: Anchor::Top | Anchor::Left | Anchor::Right | Anchor::Bottom,
+                            margin: Some((0, 200, 800, 200)),
+                            size: None,
+                            ..Default::default()
+                        },
+                        id,
+                    })
+                    .chain(Task::done(Message::WindowOpened(id)))
+                }
             };
-
-            let (id, task) = window::open(settings);
-            self.window_id = Some(id);
-
-            let task = task.map(Message::WindowOpened);
 
             if self.terminals.is_empty() {
                 Task::batch([self.open_tab(), task])
@@ -252,7 +302,7 @@ impl UI {
         }
     }
 
-    pub fn view(&self, _id: window::Id) -> Element<Message> {
+    pub fn view<'a>(&'a self, _id: window::Id) -> Element<'a, Message> {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
         let tab_view = match selected_terminal {
@@ -310,6 +360,7 @@ impl UI {
             ]
             .height(40)
         ]
+        .height(Length::Fill)
         .into()
     }
 
@@ -346,6 +397,10 @@ impl UI {
                 keyboard::Key::Unidentified => None,
             }),
         ])
+    }
+
+    pub fn remove_id(&mut self, _id: window::Id) {
+        self.window_id = None;
     }
 }
 

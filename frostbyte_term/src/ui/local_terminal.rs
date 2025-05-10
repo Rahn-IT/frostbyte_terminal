@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_pty::PtyProcess;
 use iced::{
-    Element, Task,
+    Element, Length, Task,
     widget::{center, text},
 };
 use sipper::sipper;
@@ -123,7 +123,7 @@ impl LocalTerminal {
             State::Active(_) => center(self.display.view().map(Message::Terminal))
                 .padding(10)
                 .into(),
-            State::Closed => center(text!("pty closed")).into(),
+            State::Closed => center(text!("pty closed")).height(Length::Fill).into(),
         }
     }
 
