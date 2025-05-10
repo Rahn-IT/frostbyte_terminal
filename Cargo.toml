@@ -6,7 +6,6 @@ members = ["async_pty", "frozen_term", "frostbyte_term"]
 
 [workspace.dependencies]
 anyhow = "1.0.97"
-iced = { version = "0.13.1", features = ["tokio", "advanced", "multi-window"] }
 sipper = "0.1.0"
 thiserror = "2.0.12"
 tokio-util = { version = "0.7.14", features = ["rt"] }

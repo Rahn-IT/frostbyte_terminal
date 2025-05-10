@@ -4,16 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-frozen_term = { path = "../frozen_term" }
-iced = { workspace = true }
+frozen_term = { path = "../frozen_term", features = ["iced-master"] }
+iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
+# iced = { workspace = true }
 tokio-util = { workspace = true }
 sipper = { workspace = true }
 async_pty = { path = "../async_pty" }
-iced_aw = { version = "0.12.2", features = ["tab_bar", "tabs"] }
+# iced_aw = { version = "0.12.2", features = ["tab_bar", "tabs"] }
 global-hotkey = "0.6.4"
 tray-icon = "0.20.1"
 tokio = "1.45.0"
-iced_layershell = "0.13.5"
 
 [target.'cfg(unix)'.dependencies]
 gtk = "0.18.2"
+iced_layershell = "0.13.5"

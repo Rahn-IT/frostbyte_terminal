@@ -62,6 +62,7 @@ impl PtyProcess {
             let cancel2 = cancel.clone();
 
             tokio::spawn(async move {
+                println!("starting writer task");
                 let cancel = cancel2;
                 let mut writer_recv = writer_recv;
                 cancel
@@ -73,6 +74,7 @@ impl PtyProcess {
                         }
                     })
                     .await;
+                println!("Writer task shut down");
             });
 
             // writer thread
@@ -94,6 +96,7 @@ impl PtyProcess {
                         }
                     }
                 }
+                println!("Writer thread shut down");
             });
 
             let (reader_send, reader_recv) = mpsc::channel::<Vec<u8>>(100);
@@ -120,6 +123,7 @@ impl PtyProcess {
                         }
                     }
                 }
+                println!("Reader thread shut down");
             });
 
             // For win specifically, the explicit child does implement Future.
@@ -130,6 +134,7 @@ impl PtyProcess {
                 let _ = child.wait();
 
                 cancel.cancel();
+                println!("Waiter thread shut down");
             });
 
             Ok((Self { write: writer_send }, reader_recv))

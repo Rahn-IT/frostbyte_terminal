@@ -9,7 +9,7 @@ use iced::{
     widget::{button, center, column, row, text},
     window,
 };
-use iced_aw::{TabLabel, tab_bar};
+#[cfg(unix)]
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
 use local_terminal::LocalTerminal;
 use sipper::Stream;
@@ -39,6 +39,7 @@ pub enum Message {
 
 enum Mode {
     Winit,
+    #[cfg(unix)]
     Layershell,
 }
 
@@ -82,6 +83,7 @@ impl UI {
         Self::start_in_mode(Mode::Winit)
     }
 
+    #[cfg(unix)]
     pub fn start_layershell() -> (Self, Task<Message>) {
         Self::start_in_mode(Mode::Layershell)
     }
@@ -185,17 +187,29 @@ impl UI {
             }
             Message::Shutdown => iced::exit(),
             Message::None => Task::none(),
+            #[cfg(unix)]
             Message::AnchorChange { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::SetInputRegion { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::AnchorSizeChange { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::LayerChange { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::MarginChange { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::SizeChange { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::VirtualKeyboardPressed { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::NewLayerShell { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::NewPopUp { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::NewMenu { .. } => unreachable!(),
+            #[cfg(unix)]
             Message::RemoveWindow(_) => unreachable!(),
+            #[cfg(unix)]
             Message::ForgetLastOutput => unreachable!(),
         }
     }
@@ -227,6 +241,7 @@ impl UI {
 
                     task.map(Message::WindowOpened)
                 }
+                #[cfg(unix)]
                 Mode::Layershell => {
                     let id = window::Id::unique();
 
@@ -312,20 +327,35 @@ impl UI {
 
         let current_id = self.selected_tab;
 
-        let tab_bar = tab_bar::TabBar::with_tab_labels(
-            self.terminals
-                .iter()
-                .map(|(id, terminal)| {
-                    (id.clone(), TabLabel::Text(terminal.get_title().to_string()))
-                })
-                .collect(),
-            Message::SwitchTab,
-        )
-        .set_active_tab(&self.selected_tab)
-        // .width(Length::Shrink)
-        .height(Length::Fill)
-        // .tab_width(Length::Fixed(444.0))
-        .on_close(Message::CloseTab);
+        // let tab_bar = tab_bar::TabBar::with_tab_labels(
+        //     self.terminals
+        //         .iter()
+        //         .map(|(id, terminal)| {
+        //             (id.clone(), TabLabel::Text(terminal.get_title().to_string()))
+        //         })
+        //         .collect(),
+        //     Message::SwitchTab,
+        // )
+        // .set_active_tab(&self.selected_tab)
+        // // .width(Length::Shrink)
+        // .height(Length::Fill)
+        // // .tab_width(Length::Fixed(444.0))
+        // .on_close(Message::CloseTab);
+
+        let tab_bar = row(self.terminals.iter().map(|(id, terminal)| {
+            row![
+                button(center(text(terminal.get_title())))
+                    .on_press(Message::SwitchTab(id.clone()))
+                    .width(160)
+                    .height(Length::Fill),
+                button(center(text("X")))
+                    .on_press(Message::CloseTab(id.clone()))
+                    .width(40)
+                    .height(Length::Fill)
+            ]
+            .into()
+        }));
+
         column![
             tab_view.map(move |message| {
                 Message::LocalTerminal {
@@ -406,7 +436,7 @@ impl UI {
 
 /// Stolen from the tauri global hotkey example for iced
 fn poll_events_sub() -> impl Stream<Item = Message> {
-    channel(32, |mut sender| async move {
+    channel(32, async |mut sender| {
         let hotkey_receiver = GlobalHotKeyEvent::receiver();
 
         let tray_receiver = tray_icon::menu::MenuEvent::receiver();
