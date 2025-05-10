@@ -18,7 +18,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 mod local_terminal;
 
 /// Messages emitted by the application and its widgets.
-#[iced_layershell::to_layer_message(multi)]
+#[cfg_attr(unix, iced_layershell::to_layer_message(multi))]
 #[derive(Debug, Clone)]
 pub enum Message {
     LocalTerminal {
