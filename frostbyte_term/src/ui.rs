@@ -233,9 +233,9 @@ impl UI {
                     self.window_id = Some(id);
                     Task::done(Message::NewLayerShell {
                         settings: NewLayerShellSettings {
-                            anchor: Anchor::Top | Anchor::Left | Anchor::Right | Anchor::Bottom,
-                            margin: Some((0, 200, 800, 200)),
-                            size: None,
+                            anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+                            margin: Some((0, 200, 0, 200)),
+                            size: Some((0, 600)),
                             ..Default::default()
                         },
                         id,

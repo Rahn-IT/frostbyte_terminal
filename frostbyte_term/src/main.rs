@@ -1,10 +1,7 @@
 pub mod threaded_writer;
 mod ui;
 
-use iced_layershell::{
-    reexport::Anchor,
-    settings::{LayerShellSettings, StartMode},
-};
+use iced_layershell::settings::{LayerShellSettings, StartMode};
 use ui::UI;
 
 fn main() {
@@ -20,9 +17,6 @@ fn main() {
         .theme(|_| iced::Theme::Dark)
         .antialiasing(true)
         .layer_settings(LayerShellSettings {
-            anchor: Anchor::Top,
-            exclusive_zone: 0,
-            size: Some((2000, 600)),
             start_mode: StartMode::Background,
             ..Default::default()
         })
