@@ -8,32 +8,42 @@ use iced_layershell::settings::{LayerShellSettings, StartMode};
 use ui::UI;
 
 fn main() {
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-        #[cfg(unix)]
-        iced_layershell::build_pattern::daemon(
-            "frostbyte_terminal",
-            UI::update,
-            UI::view,
-            UI::remove_id,
-        )
+    #[cfg(unix)]
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DEBUG").is_none() {
+        run_layershell();
+    } else {
+        run_iced();
+    }
+    #[cfg(windows)]
+    run_iced();
+}
+
+fn run_iced() {
+    iced::daemon(UI::start_winit, UI::update, UI::view)
         .font(include_bytes!("../fonts/RobotoMonoNerdFont-Regular.ttf"))
         .subscription(UI::subscription)
-        .theme(|_| iced::Theme::Dark)
+        .title(UI::title)
+        .theme(|_, _| iced::Theme::Dark)
         .antialiasing(true)
-        .layer_settings(LayerShellSettings {
-            start_mode: StartMode::Background,
-            ..Default::default()
-        })
-        .run_with(UI::start_layershell)
+        .run()
         .unwrap();
-    } else {
-        iced::daemon(UI::start_winit, UI::update, UI::view)
-            .font(include_bytes!("../fonts/RobotoMonoNerdFont-Regular.ttf"))
-            .subscription(UI::subscription)
-            .title(UI::title)
-            .theme(|_, _| iced::Theme::Dark)
-            .antialiasing(true)
-            .run()
-            .unwrap();
-    }
+}
+
+fn run_layershell() {
+    iced_layershell::build_pattern::daemon(
+        UI::start_layershell,
+        "frostbyte_terminal",
+        UI::update,
+        UI::view,
+    )
+    .font(include_bytes!("../fonts/RobotoMonoNerdFont-Regular.ttf"))
+    .subscription(UI::subscription)
+    .theme(|_, _| iced::Theme::Dark)
+    .antialiasing(true)
+    .layer_settings(LayerShellSettings {
+        start_mode: StartMode::Background,
+        ..Default::default()
+    })
+    .run()
+    .unwrap();
 }

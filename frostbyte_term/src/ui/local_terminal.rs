@@ -32,12 +32,6 @@ pub struct LocalTerminal {
     display: frozen_term::Terminal,
 }
 
-impl Drop for LocalTerminal {
-    fn drop(&mut self) {
-        println!("dropping local terminal!");
-    }
-}
-
 impl LocalTerminal {
     pub fn start(
         font: Option<iced::Font>,

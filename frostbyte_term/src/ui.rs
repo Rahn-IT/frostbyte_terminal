@@ -34,7 +34,6 @@ pub enum Message {
     CloseWindow,
     WindowClosed,
     Shutdown,
-    None,
 }
 
 enum Mode {
@@ -103,10 +102,7 @@ impl UI {
 
         let terminals = BTreeMap::new();
 
-        #[cfg(unix)]
-        let hotkey = Hotkey::F12;
-        #[cfg(windows)]
-        let hotkey = Hotkey::AltF12;
+        let hotkey = Hotkey::default();
         let global_hotkey = hotkey.global_hotkey();
         let hotkey_id = global_hotkey.id;
         let hotkey_manager = GlobalHotKeyManager::new().unwrap();
@@ -180,13 +176,10 @@ impl UI {
                 }
             }
             Message::WindowClosed => {
-                if let Some(id) = self.window_id {
-                    self.remove_id(id);
-                }
+                self.window_id = None;
                 Task::none()
             }
             Message::Shutdown => iced::exit(),
-            Message::None => Task::none(),
             #[cfg(unix)]
             Message::AnchorChange { .. } => unreachable!(),
             #[cfg(unix)]
@@ -211,6 +204,8 @@ impl UI {
             Message::RemoveWindow(_) => unreachable!(),
             #[cfg(unix)]
             Message::ForgetLastOutput => unreachable!(),
+            #[cfg(unix)]
+            Message::ExclusiveZoneChange { .. } => unreachable!(),
         }
     }
 
@@ -405,10 +400,6 @@ impl UI {
 
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
-            window::events().map(|(_id, event)| match event {
-                window::Event::Closed => Message::WindowClosed,
-                _ => Message::None,
-            }),
             window::close_events().map(|_| Message::WindowClosed),
             Subscription::run(poll_events_sub),
             keyboard::on_key_press(|key, modifiers| match key {
@@ -427,10 +418,6 @@ impl UI {
                 keyboard::Key::Unidentified => None,
             }),
         ])
-    }
-
-    pub fn remove_id(&mut self, _id: window::Id) {
-        self.window_id = None;
     }
 }
 
@@ -464,6 +451,19 @@ enum Hotkey {
     F12,
     #[allow(dead_code)]
     AltF12,
+    Pause,
+}
+
+impl Default for Hotkey {
+    fn default() -> Self {
+        if std::env::var_os("DEBUG").is_some() {
+            return Self::Pause;
+        }
+        #[cfg(unix)]
+        return Self::F12;
+        #[cfg(windows)]
+        return Self::AltF12;
+    }
 }
 
 impl Hotkey {
@@ -471,6 +471,7 @@ impl Hotkey {
         match self {
             Self::F12 => hotkey::HotKey::new(None, hotkey::Code::F12),
             Self::AltF12 => hotkey::HotKey::new(Some(hotkey::Modifiers::ALT), hotkey::Code::F12),
+            Self::Pause => hotkey::HotKey::new(None, hotkey::Code::Pause),
         }
     }
 
@@ -483,6 +484,10 @@ impl Hotkey {
             Self::AltF12 => (
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::F12),
                 iced::keyboard::Modifiers::ALT,
+            ),
+            Self::Pause => (
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::Pause),
+                iced::keyboard::Modifiers::empty(),
             ),
         }
     }

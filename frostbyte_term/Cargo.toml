@@ -5,7 +5,10 @@ edition = "2024"
 
 [dependencies]
 frozen_term = { path = "../frozen_term", features = ["iced-master"] }
-iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
+iced = { git = "https://github.com/iced-rs/iced.git", features = [
+    "wgpu",
+    "debug",
+] }
 # iced = { workspace = true }
 tokio-util = { workspace = true }
 sipper = { workspace = true }
@@ -16,5 +19,5 @@ tray-icon = "0.20.1"
 tokio = "1.45.0"
 
 [target.'cfg(unix)'.dependencies]
+iced_layershell = { git = "https://github.com/waycrate/exwlshelleventloop.git", branch = "iced14" }
 gtk = "0.18.2"
-iced_layershell = "0.13.5"

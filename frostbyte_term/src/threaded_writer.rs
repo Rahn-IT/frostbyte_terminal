@@ -30,7 +30,6 @@ impl ThreadedWriter {
                     }
                 }
             }
-            println!("Threaded writer shut down");
         });
 
         Self { sender }

@@ -56,12 +56,6 @@ pub struct BridgedWriter {
     send: mpsc::Sender<Vec<u8>>,
 }
 
-impl Drop for BridgedWriter {
-    fn drop(&mut self) {
-        println!("dropping bridged writer!");
-    }
-}
-
 impl std::io::Write for BridgedWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if self.send.blocking_send(buf.to_vec()).is_ok() {
