@@ -413,7 +413,7 @@ where
         tree: &mut iced::advanced::widget::Tree,
         event: &iced::Event,
         layout: iced::advanced::Layout<'_>,
-        _cursor: iced::advanced::mouse::Cursor,
+        cursor: iced::advanced::mouse::Cursor,
         renderer: &Renderer,
         _clipboard: &mut dyn iced::advanced::Clipboard,
         shell: &mut iced::advanced::Shell<'_, Message>,
@@ -464,10 +464,15 @@ where
             iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_))
             | iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
                 let state = tree.state.downcast_mut::<State<Renderer>>();
+                let focused = cursor.position_over(layout.bounds()).is_some();
 
-                state.focused = true;
+                state.focused = focused;
 
-                iced::advanced::graphics::core::event::Status::Captured
+                if focused {
+                    iced::advanced::graphics::core::event::Status::Captured
+                } else {
+                    iced::advanced::graphics::core::event::Status::Ignored
+                }
             }
             iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                 modified_key,
