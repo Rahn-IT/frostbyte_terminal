@@ -380,6 +380,7 @@ struct State<R: iced::advanced::text::Renderer> {
     last_render_seqno: usize,
     cursor: CursorPosition,
     last_cursor_blink: Instant,
+    last_cursor_event: Instant,
     now: Instant,
 }
 
@@ -469,6 +470,7 @@ where
                 state.focused = focused;
 
                 if focused {
+                    state.last_cursor_event = Instant::now();
                     iced::advanced::graphics::core::event::Status::Captured
                 } else {
                     iced::advanced::graphics::core::event::Status::Ignored
@@ -487,6 +489,8 @@ where
                             return iced::advanced::graphics::core::event::Status::Ignored;
                         }
                     }
+
+                    state.last_cursor_event = Instant::now();
 
                     let message = Message::KeyPress {
                         modified_key: modified_key.clone(),
@@ -522,6 +526,7 @@ where
             last_render_seqno: 0,
             cursor: CursorPosition::default(),
             last_cursor_blink: Instant::now(),
+            last_cursor_event: Instant::now(),
             now: Instant::now(),
         })
     }
@@ -640,95 +645,6 @@ where
         );
     }
 
-    // fn on_event(
-    //     &mut self,
-    //     tree: &mut iced::advanced::widget::Tree,
-    //     event: iced::Event,
-    //     layout: iced::advanced::Layout<'_>,
-    //     _cursor: iced::advanced::mouse::Cursor,
-    //     renderer: &Renderer,
-    //     _clipboard: &mut dyn iced::advanced::Clipboard,
-    //     shell: &mut Shell<'_, Message>,
-    //     _viewport: &iced::Rectangle,
-    // ) -> iced::advanced::graphics::core::event::Status {
-    //     match event {
-    //         iced::Event::Window(iced::window::Event::RedrawRequested(now)) => {
-    //             let term = &self.term.term;
-    //             let screen = term.screen();
-
-    //             let widget_width = layout.bounds().width;
-    //             let widget_height = layout.bounds().height;
-    //             let line_height = renderer.default_size().0;
-    //             let char_width = line_height * CHAR_WIDTH;
-
-    //             let target_line_count = (0.77 * widget_height / line_height) as usize;
-    //             let target_col_count = (widget_width / char_width) as usize;
-
-    //             if screen.physical_rows != target_line_count
-    //                 || screen.physical_cols != target_col_count
-    //             {
-    //                 let size = TerminalSize {
-    //                     rows: target_line_count,
-    //                     cols: target_col_count,
-    //                     pixel_height: widget_height as usize,
-    //                     pixel_width: widget_width as usize,
-    //                     ..Default::default()
-    //                 };
-    //                 shell.publish(Message::Resize(size));
-    //             }
-
-    //             // handle blinking cursor
-    //             let state = tree.state.downcast_mut::<State<Renderer>>();
-    //             if state.focused {
-    //                 state.now = now;
-    //                 let millis_until_redraw = CURSOR_BLINK_INTERVAL_MILLIS
-    //                     - (now - state.last_cursor_blink).as_millis()
-    //                         % CURSOR_BLINK_INTERVAL_MILLIS;
-
-    //                 shell.request_redraw(RedrawRequest::At(
-    //                     now + Duration::from_millis(millis_until_redraw as u64),
-    //                 ));
-    //             }
-
-    //             iced::advanced::graphics::core::event::Status::Ignored
-    //         }
-    //         iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_))
-    //         | iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
-    //             let state = tree.state.downcast_mut::<State<Renderer>>();
-
-    //             state.focused = true;
-
-    //             iced::advanced::graphics::core::event::Status::Captured
-    //         }
-    //         iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-    //             modified_key,
-    //             modifiers,
-    //             ..
-    //         }) => {
-    //             let state = tree.state.downcast_mut::<State<Renderer>>();
-
-    //             if state.focused {
-    //                 if let Some(filter) = &self.term.key_filter {
-    //                     if filter(&modified_key, &modifiers) {
-    //                         return iced::advanced::graphics::core::event::Status::Ignored;
-    //                     }
-    //                 }
-
-    //                 let message = Message::KeyPress {
-    //                     modified_key,
-    //                     modifiers,
-    //                 };
-    //                 shell.publish(message);
-
-    //                 iced::advanced::graphics::core::event::Status::Captured
-    //             } else {
-    //                 iced::advanced::graphics::core::event::Status::Ignored
-    //             }
-    //         }
-    //         _ => iced::advanced::graphics::core::event::Status::Ignored,
-    //     }
-    // }
-
     fn draw(
         &self,
         tree: &iced::advanced::widget::Tree,
@@ -788,8 +704,10 @@ fn draw_cursor<Renderer>(
     Renderer: iced::advanced::text::Renderer,
 {
     let is_cursor_visible = state.cursor.visibility == CursorVisibility::Visible
-        && ((state.now - state.last_cursor_blink).as_millis() / CURSOR_BLINK_INTERVAL_MILLIS) % 2
-            == 0;
+        && ((state.now - state.last_cursor_event).as_millis() < CURSOR_BLINK_INTERVAL_MILLIS
+            || ((state.now - state.last_cursor_blink).as_millis() / CURSOR_BLINK_INTERVAL_MILLIS)
+                % 2
+                == 0);
 
     if !is_cursor_visible {
         return;
