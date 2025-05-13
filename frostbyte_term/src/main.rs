@@ -29,6 +29,7 @@ fn run_iced() {
         .unwrap();
 }
 
+#[cfg(unix)]
 fn run_layershell() {
     iced_layershell::build_pattern::daemon(
         UI::start_layershell,
