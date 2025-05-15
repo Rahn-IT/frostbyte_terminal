@@ -13,7 +13,7 @@ use iced::{
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
 use local_terminal::LocalTerminal;
 use sipper::Stream;
-use tray_icon::{TrayIcon, TrayIconBuilder};
+use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder};
 
 mod local_terminal;
 
@@ -74,6 +74,7 @@ impl UI {
         TrayIconBuilder::new()
             .with_tooltip("Frostbyte")
             .with_menu(Box::new(tray_menu))
+            .with_menu_on_left_click(false)
             .build()
             .unwrap()
     }
@@ -338,18 +339,25 @@ impl UI {
         // .on_close(Message::CloseTab);
 
         let tab_bar = row(self.terminals.iter().map(|(id, terminal)| {
-            row![
-                button(center(text(terminal.get_title())))
-                    .on_press(Message::SwitchTab(id.clone()))
-                    .width(160)
-                    .height(Length::Fill),
-                button(center(text("X")))
+            let style = if id == &self.selected_tab {
+                button::secondary
+            } else {
+                button::primary
+            };
+            button(row![
+                center(text(terminal.get_title())),
+                button(text("X").center())
                     .on_press(Message::CloseTab(id.clone()))
-                    .width(40)
-                    .height(Length::Fill)
-            ]
+                    .width(30)
+                    .style(button::danger)
+            ])
+            .on_press(Message::SwitchTab(id.clone()))
+            .style(style)
+            .width(200)
+            .height(Length::Fill)
             .into()
-        }));
+        }))
+        .spacing(5);
 
         column![
             tab_view.map(move |message| {
@@ -365,20 +373,7 @@ impl UI {
                     .height(Length::Fill)
                     .on_press(Message::OpenTab),
                 button(center(text("X")))
-                    .style(|_, status| {
-                        let color = match status {
-                            button::Status::Active | button::Status::Pressed => {
-                                Color::from_rgb(0.8, 0.0, 0.0)
-                            }
-                            button::Status::Hovered => Color::from_rgb(0.8, 0.2, 0.2),
-                            button::Status::Disabled => Color::from_rgb(0.5, 0.5, 0.5),
-                        };
-                        button::Style {
-                            background: Some(color.into()),
-                            text_color: Color::WHITE,
-                            ..Default::default()
-                        }
-                    })
+                    .style(button::danger)
                     .width(40)
                     .height(Length::Fill)
                     .on_press(Message::CloseWindow)
@@ -426,7 +421,8 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
     channel(32, async |mut sender| {
         let hotkey_receiver = GlobalHotKeyEvent::receiver();
 
-        let tray_receiver = tray_icon::menu::MenuEvent::receiver();
+        let tray_menu_receiver = tray_icon::menu::MenuEvent::receiver();
+        let tray_icon_receiver = tray_icon::TrayIconEvent::receiver();
         // poll for global hotkey events every 50ms
         loop {
             if let Ok(event) = hotkey_receiver.try_recv() {
@@ -436,9 +432,26 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
                     }
                 }
             }
-            if let Ok(_event) = tray_receiver.try_recv() {
+            if let Ok(event) = tray_menu_receiver.try_recv() {
+                println!("{:?}", event);
                 if let Err(err) = sender.send(Message::Shutdown).await {
                     eprintln!("Error sending tray message: {}", err);
+                }
+            }
+            if let Ok(event) = tray_icon_receiver.try_recv() {
+                match event {
+                    tray_icon::TrayIconEvent::Click {
+                        button,
+                        button_state,
+                        ..
+                    } => {
+                        if button == MouseButton::Left && button_state == MouseButtonState::Down {
+                            if let Err(err) = sender.send(Message::Hotkey).await {
+                                eprintln!("Error sending tray message: {}", err);
+                            }
+                        }
+                    }
+                    _ => (),
                 }
             }
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
