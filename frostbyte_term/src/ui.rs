@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt::Debug, time::Duration};
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
-    Color, Element, Font, Length, Subscription, Task,
+    Element, Font, Length, Subscription, Task,
     futures::SinkExt,
     keyboard,
     stream::channel,
@@ -366,20 +366,24 @@ impl UI {
                     message,
                 }
             }),
-            row![
-                tab_bar,
-                button(center(text("New Tab")))
-                    .width(200)
-                    .height(Length::Fill)
-                    .on_press(Message::OpenTab),
-                button(center(text("X")))
-                    .style(button::danger)
-                    .width(40)
-                    .height(Length::Fill)
-                    .on_press(Message::CloseWindow)
-            ]
-            .height(40)
+            tab_bar
+                .push(
+                    button(center(text("New Tab")))
+                        .width(200)
+                        .height(Length::Fill)
+                        .on_press(Message::OpenTab),
+                )
+                .push(iced::widget::horizontal_space())
+                .push(
+                    button(center(text("X")))
+                        .style(button::danger)
+                        .width(40)
+                        .height(Length::Fill)
+                        .on_press(Message::CloseWindow)
+                )
+                .height(40)
         ]
+        .height(40)
         .height(Length::Fill)
         .into()
     }
