@@ -430,7 +430,7 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
         // poll for global hotkey events every 50ms
         loop {
             if let Ok(event) = hotkey_receiver.try_recv() {
-                if event.state() == HotKeyState::Released {
+                if event.state() == HotKeyState::Pressed {
                     if let Err(err) = sender.send(Message::Hotkey).await {
                         eprintln!("Error sending hotkey message: {}", err);
                     }

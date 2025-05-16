@@ -1,6 +1,10 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use iced::advanced::text::Paragraph;
+use iced_master::mouse::ScrollDelta;
 #[cfg(feature = "iced-master")]
 use iced_master::{self as iced};
 
@@ -25,6 +29,7 @@ pub enum Message {
     },
     Input(Vec<u8>),
     Paste(Option<String>),
+    Scrolled(ScrollDelta),
 }
 
 pub enum Action {
@@ -41,6 +46,7 @@ pub struct Terminal {
     // here to abort the task on drop
     _handle: iced::task::Handle,
     font: iced::Font,
+    scroll_pos: usize,
 }
 
 #[derive(Debug)]
@@ -105,6 +111,7 @@ impl Terminal {
                 _handle: handle,
                 key_filter: None,
                 font: iced::Font::MONOSPACE,
+                scroll_pos: 0,
             },
             task,
         )
@@ -196,6 +203,33 @@ impl Terminal {
                 if let Some(paste) = paste {
                     self.term.send_paste(&paste).unwrap();
                 }
+                Action::None
+            }
+            Message::Scrolled(scrolled) => {
+                match scrolled {
+                    ScrollDelta::Lines { x, y } => {
+                        if y >= 0.0 {
+                            self.scroll_pos += y as usize
+                        } else {
+                            self.scroll_pos = self.scroll_pos.saturating_sub(-y as usize);
+                        }
+                        println!("Scroll in lines: {}", y);
+                    }
+                    ScrollDelta::Pixels { x, y } => {
+                        println!("Scroll in pixels: {}", y);
+                    }
+                };
+
+                println!("current scroll before fix: {}", self.scroll_pos);
+
+                let max_scrollback =
+                    self.term.screen().scrollback_rows() - self.term.screen().physical_rows;
+
+                if self.scroll_pos > max_scrollback {
+                    self.scroll_pos = max_scrollback;
+                }
+                println!("current scroll: {}", self.scroll_pos);
+
                 Action::None
             }
         }
@@ -450,17 +484,26 @@ where
                 let state = tree.state.downcast_mut::<State<Renderer>>();
                 if state.focused {
                     state.now = *now;
-                    // let millis_until_redraw = CURSOR_BLINK_INTERVAL_MILLIS
-                    //     - (now - state.last_cursor_blink).as_millis()
-                    //         % CURSOR_BLINK_INTERVAL_MILLIS;
+                    let millis_until_redraw = CURSOR_BLINK_INTERVAL_MILLIS
+                        - (*now - state.last_cursor_blink).as_millis()
+                            % CURSOR_BLINK_INTERVAL_MILLIS;
 
-                    shell.request_redraw();
-                    // shell.request_redraw(RedrawRequest::At(
-                    //     now + Duration::from_millis(millis_until_redraw as u64),
-                    // ));
+                    #[cfg(feature = "iced-master")]
+                    shell.request_redraw_at(iced::window::RedrawRequest::At(
+                        *now + Duration::from_millis(millis_until_redraw as u64),
+                    ));
+                    #[cfg(feature = "iced-013")]
+                    shell.request_redraw(RedrawRequest::At(
+                        now + Duration::from_millis(millis_until_redraw as u64),
+                    ));
                 }
 
                 iced::advanced::graphics::core::event::Status::Ignored
+            }
+            iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => {
+                shell.publish(Message::Scrolled(delta.clone()));
+
+                iced::advanced::graphics::core::event::Status::Captured
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_))
             | iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
@@ -561,7 +604,10 @@ where
         if state.last_render_seqno != current_seqno {
             let screen = term.screen();
 
-            let range = screen.phys_range(&(0..screen.physical_rows as i64));
+            let range = screen.phys_range(
+                &((self.term.scroll_pos as i64)
+                    ..screen.physical_rows as i64 + (self.term.scroll_pos as i64)),
+            );
             let term_lines = screen.lines_in_phys_range(range);
 
             let mut current_text = String::new();
