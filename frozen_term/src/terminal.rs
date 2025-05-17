@@ -604,10 +604,10 @@ where
         if state.last_render_seqno != current_seqno {
             let screen = term.screen();
 
-            let range = screen.phys_range(
-                &((self.term.scroll_pos as i64)
-                    ..screen.physical_rows as i64 + (self.term.scroll_pos as i64)),
-            );
+            let end = screen
+                .scrollback_rows()
+                .saturating_sub(self.term.scroll_pos);
+            let range = end.saturating_sub(screen.physical_rows)..end;
             let term_lines = screen.lines_in_phys_range(range);
 
             let mut current_text = String::new();
