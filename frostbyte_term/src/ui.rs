@@ -34,6 +34,7 @@ pub enum Message {
     CloseWindow,
     WindowClosed,
     Shutdown,
+    Dummy,
 }
 
 enum Mode {
@@ -155,8 +156,8 @@ impl UI {
             }
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey => {
-                return if let Some(id) = self.window_id {
-                    window::close(id)
+                return if self.window_id.is_some() {
+                    self.close_window()
                 } else {
                     self.open_window()
                 };
@@ -168,19 +169,13 @@ impl UI {
                     Task::none()
                 }
             }
-            Message::CloseWindow => {
-                if let Some(id) = self.window_id {
-                    self.window_id = None;
-                    return window::close(id);
-                } else {
-                    Task::none()
-                }
-            }
+            Message::CloseWindow => self.close_window(),
             Message::WindowClosed => {
                 self.window_id = None;
                 Task::none()
             }
             Message::Shutdown => iced::exit(),
+            Message::Dummy => Task::none(),
             #[cfg(unix)]
             Message::AnchorChange { .. } => unreachable!(),
             #[cfg(unix)]
@@ -207,6 +202,8 @@ impl UI {
             Message::ForgetLastOutput => unreachable!(),
             #[cfg(unix)]
             Message::ExclusiveZoneChange { .. } => unreachable!(),
+            #[cfg(unix)]
+            Message::NewInputPanel { .. } => unreachable!(),
         }
     }
 
@@ -263,6 +260,15 @@ impl UI {
         }
     }
 
+    fn close_window(&mut self) -> Task<Message> {
+        if let Some(id) = self.window_id {
+            self.window_id = None;
+            window::close(id)
+        } else {
+            Task::none()
+        }
+    }
+
     fn open_tab(&mut self) -> Task<Message> {
         let (local_terminal, terminal_task) = LocalTerminal::start(
             Some(Font::with_name("RobotoMono Nerd Font")),
@@ -294,13 +300,7 @@ impl UI {
             self.selected_tab = *id;
             self.focus_tab(*id)
         } else {
-            let id = self.window_id.clone();
-            if let Some(id) = id {
-                self.window_id = None;
-                window::close(id)
-            } else {
-                Task::none()
-            }
+            self.close_window()
         }
     }
 
@@ -322,21 +322,6 @@ impl UI {
         };
 
         let current_id = self.selected_tab;
-
-        // let tab_bar = tab_bar::TabBar::with_tab_labels(
-        //     self.terminals
-        //         .iter()
-        //         .map(|(id, terminal)| {
-        //             (id.clone(), TabLabel::Text(terminal.get_title().to_string()))
-        //         })
-        //         .collect(),
-        //     Message::SwitchTab,
-        // )
-        // .set_active_tab(&self.selected_tab)
-        // // .width(Length::Shrink)
-        // .height(Length::Fill)
-        // // .tab_width(Length::Fixed(444.0))
-        // .on_close(Message::CloseTab);
 
         let tab_bar = row(self.terminals.iter().map(|(id, terminal)| {
             let style = if id == &self.selected_tab {
@@ -434,10 +419,18 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
                     if let Err(err) = sender.send(Message::Hotkey).await {
                         eprintln!("Error sending hotkey message: {}", err);
                     }
+                } else {
+                    // So why would you send a dummy message here? That's obviously stupid.
+                    // Well - if I don't the window doesn't open in layershell mode.
+                    // It almost seems like the event loop hangs.
+                    // I can't unhang it with a timed message, but sending one on key release works.
+                    // Just please don't ask me why - I have no idea
+                    if let Err(err) = sender.send(Message::Dummy).await {
+                        eprintln!("Error sending dummy message: {}", err);
+                    }
                 }
             }
-            if let Ok(event) = tray_menu_receiver.try_recv() {
-                println!("{:?}", event);
+            if let Ok(_event) = tray_menu_receiver.try_recv() {
                 if let Err(err) = sender.send(Message::Shutdown).await {
                     eprintln!("Error sending tray message: {}", err);
                 }
@@ -458,7 +451,7 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
                     _ => (),
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
     })
 }

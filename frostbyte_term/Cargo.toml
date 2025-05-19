@@ -11,7 +11,7 @@ tokio-util = { workspace = true }
 sipper = { workspace = true }
 async_pty = { path = "../async_pty" }
 # iced_aw = { version = "0.12.2", features = ["tab_bar", "tabs"] }
-global-hotkey = "0.6.4"
+global-hotkey = "0.7.0"
 tray-icon = "0.20.1"
 tokio = "1.45.0"
 
