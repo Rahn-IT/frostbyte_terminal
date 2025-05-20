@@ -207,7 +207,7 @@ impl Terminal {
             }
             Message::Scrolled(scrolled) => {
                 match scrolled {
-                    ScrollDelta::Lines { x, y } => {
+                    ScrollDelta::Lines { y, .. } => {
                         if y >= 0.0 {
                             self.scroll_pos += y as usize
                         } else {
@@ -215,7 +215,7 @@ impl Terminal {
                         }
                         println!("Scroll in lines: {}", y);
                     }
-                    ScrollDelta::Pixels { x, y } => {
+                    ScrollDelta::Pixels { y, .. } => {
                         println!("Scroll in pixels: {}", y);
                     }
                 };
