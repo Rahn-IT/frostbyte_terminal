@@ -4,7 +4,9 @@ use std::{
 };
 
 use iced::advanced::text::Paragraph;
-use iced_master::mouse::ScrollDelta;
+use iced::mouse::ScrollDelta;
+#[cfg(feature = "iced-013")]
+use iced_013::{self as iced};
 #[cfg(feature = "iced-master")]
 use iced_master::{self as iced};
 
@@ -497,8 +499,8 @@ where
                         *now + Duration::from_millis(millis_until_redraw as u64),
                     ));
                     #[cfg(feature = "iced-013")]
-                    shell.request_redraw(RedrawRequest::At(
-                        now + Duration::from_millis(millis_until_redraw as u64),
+                    shell.request_redraw(iced::window::RedrawRequest::At(
+                        *now + Duration::from_millis(millis_until_redraw as u64),
                     ));
                 }
 
@@ -591,8 +593,10 @@ where
     ) {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
+        #[cfg(feature = "iced-master")]
         operation.focusable(self.id.as_ref().map(|id| &id.0), _layout.bounds(), state);
-        // operation.focusable(state, self.id.as_ref().map(|id| &id.0));
+        #[cfg(feature = "iced-013")]
+        operation.focusable(state, self.id.as_ref().map(|id| &id.0));
     }
 
     fn layout(
@@ -667,8 +671,14 @@ where
                 size: renderer.default_size(),
                 line_height: iced::advanced::text::LineHeight::default(),
                 font: self.font,
+                #[cfg(feature = "iced-master")]
                 align_x: iced::advanced::text::Alignment::Left,
+                #[cfg(feature = "iced-013")]
+                horizontal_alignment: iced::alignment::Horizontal::Left,
+                #[cfg(feature = "iced-master")]
                 align_y: iced::alignment::Vertical::Top,
+                #[cfg(feature = "iced-013")]
+                vertical_alignment: iced::alignment::Vertical::Top,
                 shaping: iced::widget::text::Shaping::Advanced,
                 wrapping: iced::widget::text::Wrapping::None,
             };
@@ -679,6 +689,7 @@ where
         iced::advanced::layout::Node::new(limits.max())
     }
 
+    #[cfg(feature = "iced-master")]
     fn update(
         &mut self,
         state: &mut iced::advanced::widget::Tree,
@@ -693,6 +704,23 @@ where
         self.combined_update(
             state, event, layout, cursor, renderer, clipboard, shell, viewport,
         );
+    }
+
+    #[cfg(feature = "iced-013")]
+    fn on_event(
+        &mut self,
+        state: &mut iced::advanced::widget::Tree,
+        event: iced::Event,
+        layout: iced::advanced::Layout<'_>,
+        cursor: iced::advanced::mouse::Cursor,
+        renderer: &Renderer,
+        clipboard: &mut dyn iced::advanced::Clipboard,
+        shell: &mut iced::advanced::Shell<'_, Message>,
+        viewport: &iced::Rectangle,
+    ) -> iced::event::Status {
+        self.combined_update(
+            state, &event, layout, cursor, renderer, clipboard, shell, viewport,
+        )
     }
 
     fn draw(

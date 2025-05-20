@@ -1672,7 +1672,7 @@ dependencies = [
 
 [[package]]
 name = "frozen_term"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "iced 0.13.1",
  "iced 0.14.0-dev",
