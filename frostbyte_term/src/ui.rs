@@ -9,7 +9,7 @@ use iced::{
     widget::{button, center, column, row, text},
     window,
 };
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
 use local_terminal::LocalTerminal;
 use sipper::Stream;
@@ -18,7 +18,7 @@ use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder};
 mod local_terminal;
 
 /// Messages emitted by the application and its widgets.
-#[cfg_attr(unix, iced_layershell::to_layer_message(multi))]
+#[cfg_attr(target_os = "linux", iced_layershell::to_layer_message(multi))]
 #[derive(Debug, Clone)]
 pub enum Message {
     LocalTerminal {
@@ -39,7 +39,7 @@ pub enum Message {
 
 enum Mode {
     Winit,
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     Layershell,
 }
 
@@ -84,22 +84,22 @@ impl UI {
         Self::start_in_mode(Mode::Winit)
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     pub fn start_layershell() -> (Self, Task<Message>) {
         Self::start_in_mode(Mode::Layershell)
     }
 
     fn start_in_mode(mode: Mode) -> (Self, Task<Message>) {
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         std::thread::spawn(|| {
             gtk::init().unwrap();
             let _tray_icon = Self::create_tray_icon();
 
             gtk::main();
         });
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         let tray_icon = None;
-        #[cfg(windows)]
+        #[cfg(not(target_os = "linux"))]
         let tray_icon = Some(Self::create_tray_icon());
 
         let terminals = BTreeMap::new();
@@ -176,33 +176,33 @@ impl UI {
             }
             Message::Shutdown => iced::exit(),
             Message::Dummy => Task::none(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::AnchorChange { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::SetInputRegion { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::AnchorSizeChange { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::LayerChange { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::MarginChange { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::SizeChange { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::VirtualKeyboardPressed { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::NewLayerShell { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::NewPopUp { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::NewMenu { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::RemoveWindow(_) => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::ForgetLastOutput => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::ExclusiveZoneChange { .. } => unreachable!(),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Message::NewInputPanel { .. } => unreachable!(),
         }
     }
@@ -234,7 +234,7 @@ impl UI {
 
                     task.map(Message::WindowOpened)
                 }
-                #[cfg(unix)]
+                #[cfg(target_os = "linux")]
                 Mode::Layershell => {
                     let id = window::Id::unique();
 
@@ -469,9 +469,9 @@ impl Default for Hotkey {
         if std::env::var_os("DEBUG").is_some() {
             return Self::Pause;
         }
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         return Self::F12;
-        #[cfg(windows)]
+        #[cfg(not(target_os = "linux"))]
         return Self::AltF12;
     }
 }

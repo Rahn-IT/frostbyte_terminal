@@ -3,18 +3,18 @@
 // pub mod threaded_writer;
 mod ui;
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use iced_layershell::settings::{LayerShellSettings, StartMode};
 use ui::UI;
 
 fn main() {
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     if std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DEBUG").is_none() {
         run_layershell();
     } else {
         run_iced();
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     run_iced();
 }
 
@@ -29,7 +29,7 @@ fn run_iced() {
         .unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn run_layershell() {
     iced_layershell::build_pattern::daemon(
         UI::start_layershell,

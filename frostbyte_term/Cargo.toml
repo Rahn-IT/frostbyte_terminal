@@ -15,6 +15,6 @@ global-hotkey = "0.7.0"
 tray-icon = "0.20.1"
 tokio = "1.45.0"
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 iced_layershell = { git = "https://github.com/waycrate/exwlshelleventloop.git", branch = "iced14" }
 gtk = "0.18.2"
