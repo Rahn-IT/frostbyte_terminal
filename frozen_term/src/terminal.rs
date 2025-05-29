@@ -636,6 +636,8 @@ where
             let (r, g, b, a) = palette.background.to_tuple_rgba();
             let background_color = iced::Color::from_rgba(r, g, b, a);
             state.background = background_color;
+            let (r, g, b, a) = palette.foreground.to_tuple_rgba();
+            let foreground_color = iced::Color::from_rgba(r, g, b, a);
 
             state.cursor = term.cursor_pos();
 
@@ -644,8 +646,10 @@ where
                     if cell.attrs() != &current_attrs {
                         // if !cell.attrs().attribute_bits_equal(&current_attrs) {
                         if !current_text.is_empty() {
-                            let mut foreground = get_color(current_attrs.foreground(), &palette);
-                            let mut background = get_color(current_attrs.background(), &palette);
+                            let mut foreground = get_color(current_attrs.foreground(), &palette)
+                                .unwrap_or_else(|| foreground_color);
+                            let mut background = get_color(current_attrs.background(), &palette)
+                                .unwrap_or_else(|| background_color);
                             if current_attrs.reverse() {
                                 let new_foreground = background;
                                 background = foreground;
@@ -653,8 +657,8 @@ where
                             }
 
                             let span = iced::advanced::text::Span::new(current_text.clone())
-                                .color_maybe(foreground)
-                                .background_maybe(background);
+                                .color(foreground)
+                                .background(background);
 
                             state.spans.push(span);
                             current_text.clear();
@@ -668,12 +672,18 @@ where
             }
 
             if current_text.len() > 1 {
-                let foreground = get_color(current_attrs.foreground(), &palette);
-                let background = get_color(current_attrs.background(), &palette)
+                let mut foreground = get_color(current_attrs.foreground(), &palette)
+                    .unwrap_or_else(|| foreground_color);
+                let mut background = get_color(current_attrs.background(), &palette)
                     .unwrap_or_else(|| background_color);
+                if current_attrs.reverse() {
+                    let new_foreground = background;
+                    background = foreground;
+                    foreground = new_foreground;
+                }
 
-                let span = iced::advanced::text::Span::new(current_text)
-                    .color_maybe(foreground)
+                let span = iced::advanced::text::Span::new(current_text.clone())
+                    .color(foreground)
                     .background(background);
 
                 state.spans.push(span);
