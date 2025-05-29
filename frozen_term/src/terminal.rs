@@ -49,6 +49,7 @@ pub struct Terminal {
     _handle: iced::task::Handle,
     font: iced::Font,
     scroll_pos: usize,
+    padding: iced::Padding,
 }
 
 #[derive(Debug)]
@@ -114,6 +115,7 @@ impl Terminal {
                 key_filter: None,
                 font: iced::Font::MONOSPACE,
                 scroll_pos: 0,
+                padding: 10.into(),
             },
             task,
         )
@@ -126,6 +128,11 @@ impl Terminal {
 
     pub fn random_id(self) -> Self {
         self.id(Id(iced::advanced::widget::Id::unique()))
+    }
+
+    pub fn padding(mut self, padding: impl Into<iced::Padding>) -> Self {
+        self.padding = padding.into();
+        self
     }
 
     /// Allows you to add a filter to stop the terminal from capturing keypresses you want to use for your application.
@@ -466,8 +473,8 @@ where
                 let term = &self.term.term;
                 let screen = term.screen();
 
-                let widget_width = layout.bounds().width;
-                let widget_height = layout.bounds().height;
+                let widget_width = layout.bounds().width - self.term.padding.horizontal();
+                let widget_height = layout.bounds().height - self.term.padding.vertical();
                 let line_height = renderer.default_size().0;
                 let char_width = line_height * CHAR_WIDTH;
 
@@ -745,7 +752,8 @@ where
         };
 
         let state = tree.state.downcast_ref::<State<Renderer>>();
-        let translation = layout.position() - iced::Point::ORIGIN;
+        let padding_offset = iced::Vector::new(self.term.padding.left, self.term.padding.top);
+        let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
 
         // terminal Background
         renderer.fill_quad(
@@ -784,7 +792,7 @@ where
 
         renderer.fill_paragraph(
             &state.paragraph,
-            bounds.position(),
+            bounds.position() + padding_offset,
             iced::Color::WHITE,
             bounds,
         );
