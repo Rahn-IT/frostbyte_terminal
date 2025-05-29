@@ -417,6 +417,7 @@ struct State<R: iced::advanced::text::Renderer> {
     focused: bool,
     paragraph: R::Paragraph,
     spans: Vec<iced::advanced::text::Span<'static, (), R::Font>>,
+    background: iced::Color,
     last_render_seqno: usize,
     cursor: CursorPosition,
     last_cursor_blink: Instant,
@@ -573,6 +574,7 @@ where
             paragraph: Renderer::Paragraph::default(),
             spans: Vec::new(),
             last_render_seqno: 0,
+            background: iced::Color::BLACK,
             cursor: CursorPosition::default(),
             last_cursor_blink: Instant::now(),
             last_cursor_event: Instant::now(),
@@ -624,6 +626,10 @@ where
 
             let palette = term.palette();
 
+            let (r, g, b, a) = palette.background.to_tuple_rgba();
+            let background_color = iced::Color::from_rgba(r, g, b, a);
+            state.background = background_color;
+
             state.cursor = term.cursor_pos();
 
             for line in term_lines.iter() {
@@ -656,11 +662,12 @@ where
 
             if current_text.len() > 1 {
                 let foreground = get_color(current_attrs.foreground(), &palette);
-                let background = get_color(current_attrs.background(), &palette);
+                let background = get_color(current_attrs.background(), &palette)
+                    .unwrap_or_else(|| background_color);
 
                 let span = iced::advanced::text::Span::new(current_text)
                     .color_maybe(foreground)
-                    .background_maybe(background);
+                    .background(background);
 
                 state.spans.push(span);
             }
@@ -740,6 +747,16 @@ where
         let state = tree.state.downcast_ref::<State<Renderer>>();
         let translation = layout.position() - iced::Point::ORIGIN;
 
+        // terminal Background
+        renderer.fill_quad(
+            iced::advanced::renderer::Quad {
+                bounds: layout.bounds(),
+                ..Default::default()
+            },
+            state.background,
+        );
+
+        // drawing text background
         for (index, span) in state.spans.iter().enumerate() {
             if let Some(highlight) = span.highlight {
                 let regions = state.paragraph.span_bounds(index);
