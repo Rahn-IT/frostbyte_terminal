@@ -11,6 +11,7 @@ use iced::{
 };
 #[cfg(target_os = "linux")]
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
+use image::GenericImageView;
 use local_terminal::LocalTerminal;
 use sipper::Stream;
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder};
@@ -43,6 +44,8 @@ enum Mode {
     Layershell,
 }
 
+const ICON: &'static [u8] = include_bytes!("../assets/icon.png");
+
 pub struct UI {
     terminals: BTreeMap<u32, LocalTerminal>,
     window_id: Option<window::Id>,
@@ -72,10 +75,15 @@ impl UI {
         let tray_menu = tray_icon::menu::Menu::new();
         tray_menu.append(&close_item).unwrap();
 
+        let icon = image::load_from_memory_with_format(ICON, image::ImageFormat::Png).unwrap();
+        let (width, height) = icon.dimensions();
+        let icon_data = icon.into_rgba8().to_vec();
+
         TrayIconBuilder::new()
             .with_tooltip("Frostbyte")
             .with_menu(Box::new(tray_menu))
             .with_menu_on_left_click(false)
+            .with_icon(tray_icon::Icon::from_rgba(icon_data, width, height).unwrap())
             .build()
             .unwrap()
     }

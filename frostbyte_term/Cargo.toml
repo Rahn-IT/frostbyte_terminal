@@ -14,7 +14,12 @@ async_pty = { path = "../async_pty" }
 global-hotkey = "0.7.0"
 tray-icon = "0.20.1"
 tokio = "1.45.0"
+image = { version = "0.25.6", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iced_layershell = { git = "https://github.com/waycrate/exwlshelleventloop.git", branch = "iced14" }
 gtk = "0.18.2"
+
+
+[build-dependencies]
+embed-resource = "3.0"
