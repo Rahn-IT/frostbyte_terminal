@@ -798,7 +798,7 @@ where
             }
         }
 
-        draw_cursor(renderer, &state, translation);
+        draw_cursor(renderer, &state, translation, &self.term);
 
         renderer.fill_paragraph(
             &state.paragraph,
@@ -813,6 +813,7 @@ fn draw_cursor<Renderer>(
     renderer: &mut Renderer,
     state: &State<Renderer>,
     translation: iced::Vector,
+    term: &Terminal,
 ) where
     Renderer: iced::advanced::text::Renderer,
 {
@@ -826,9 +827,23 @@ fn draw_cursor<Renderer>(
         return;
     }
 
+    let screen = term.term.screen();
+
+    // Calculate the scroll-adjusted cursor position using your custom scroll system
+    // The cursor position is absolute, but we need to adjust it by the scroll offset
+    let cursor_absolute_y = state.cursor.y as i64;
+    let scroll_offset = term.scroll_pos as i64;
+    let visible_cursor_y = cursor_absolute_y + scroll_offset;
+
+    // Check if cursor is within the visible area
+    if visible_cursor_y < 0 || visible_cursor_y >= screen.physical_rows as i64 {
+        // Cursor is outside the visible area due to scrolling
+        return;
+    }
+
     let base_cursor_position = iced::Point::new(
         state.cursor.x as f32 * renderer.default_size().0 * CHAR_WIDTH,
-        state.cursor.y as f32 * renderer.default_size().0 * 1.3,
+        visible_cursor_y as f32 * renderer.default_size().0 * 1.3,
     );
 
     let padding = 1.0;
