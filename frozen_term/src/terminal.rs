@@ -86,6 +86,7 @@ impl SelectionState {
             Self::None => (),
             Self::Selected { .. } => (),
         };
+        println!("selection: {:?}", self);
     }
 
     fn is_position_selected(&self, pos: SelectionPosition) -> bool {
@@ -352,8 +353,12 @@ impl Terminal {
                             self.scroll_pos = self.scroll_pos.saturating_sub(-y as usize);
                         }
                     }
-                    ScrollDelta::Pixels { .. } => {
-                        todo!()
+                    ScrollDelta::Pixels { y, .. } => {
+                        if y >= 0.0 {
+                            self.scroll_pos += y as usize
+                        } else {
+                            self.scroll_pos = self.scroll_pos.saturating_sub(-y as usize);
+                        }
                     }
                 };
 
@@ -369,14 +374,28 @@ impl Terminal {
                 Action::None
             }
             Message::StartSelection(position) => {
-                self.selection_state
-                    .start(position.into_selection_position(self.scroll_pos));
+                let horizontal_offset = self.term.screen().scrollback_rows()
+                    - self.term.get_size().rows
+                    - self.scroll_pos;
+                let fixed_pos = position.into_selection_position(horizontal_offset);
+                println!("scrollback_rows: {}", self.term.screen().scrollback_rows());
+                println!("physical_rows: {}", self.term.get_size().rows);
+                println!("scroll_pos: {}", self.scroll_pos);
+                println!("grid_position: {:?}", position.y);
+                println!("horizontal_offset: {}", horizontal_offset);
+                println!("fixed_position: {:?}", fixed_pos.y);
+                println!("---------------------------------------");
+
+                self.selection_state.start(fixed_pos);
                 self.update_spans(true);
                 Action::None
             }
             Message::MoveSelection(position) => {
-                self.selection_state
-                    .move_mouse(position.into_selection_position(self.scroll_pos));
+                let horizontal_offset = self.term.screen().scrollback_rows()
+                    - self.term.get_size().rows
+                    - self.scroll_pos;
+                let fixed_pos = position.into_selection_position(horizontal_offset);
+                self.selection_state.move_mouse(fixed_pos);
                 self.update_spans(true);
 
                 Action::None
@@ -679,12 +698,12 @@ fn screen_to_grid_position<Renderer>(
     screen_pos: iced::Point,
     layout: iced::advanced::Layout<'_>,
     renderer: &Renderer,
-    term: &Terminal,
+    padding: &iced::Padding,
 ) -> Option<GridPosition>
 where
     Renderer: iced::advanced::text::Renderer,
 {
-    let padding_offset = iced::Vector::new(term.padding.left, term.padding.top);
+    let padding_offset = iced::Vector::new(padding.left, padding.top);
     let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
 
     // Convert screen position to position relative to terminal content
@@ -705,7 +724,7 @@ where
     let char_y = (relative_pos.y / line_height) as usize;
 
     // Account for scroll offset - the displayed text is offset by scroll_pos
-    let absolute_y = char_y + term.scroll_pos;
+    let absolute_y = char_y;
 
     Some(GridPosition {
         x: char_x,
@@ -796,7 +815,7 @@ where
                                 cursor_position,
                                 layout,
                                 renderer,
-                                &self.term,
+                                &self.term.padding,
                             ) {
                                 shell.publish(Message::StartSelection(char_pos));
                                 shell.request_redraw();
@@ -812,7 +831,7 @@ where
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
                 if let SelectionState::Selecting { .. } = &self.term.selection_state {
                     if let Some(char_pos) =
-                        screen_to_grid_position(*position, layout, renderer, &self.term)
+                        screen_to_grid_position(*position, layout, renderer, &self.term.padding)
                     {
                         shell.publish(Message::MoveSelection(char_pos));
                     }
