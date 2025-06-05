@@ -374,28 +374,13 @@ impl Terminal {
                 Action::None
             }
             Message::StartSelection(position) => {
-                let horizontal_offset = self.term.screen().scrollback_rows()
-                    - self.term.get_size().rows
-                    - self.scroll_pos;
-                let fixed_pos = position.into_selection_position(horizontal_offset);
-                println!("scrollback_rows: {}", self.term.screen().scrollback_rows());
-                println!("physical_rows: {}", self.term.get_size().rows);
-                println!("scroll_pos: {}", self.scroll_pos);
-                println!("grid_position: {:?}", position.y);
-                println!("horizontal_offset: {}", horizontal_offset);
-                println!("fixed_position: {:?}", fixed_pos.y);
-                println!("---------------------------------------");
-
-                self.selection_state.start(fixed_pos);
+                self.selection_state.start(self.pos_conversion(position));
                 self.update_spans(true);
                 Action::None
             }
             Message::MoveSelection(position) => {
-                let horizontal_offset = self.term.screen().scrollback_rows()
-                    - self.term.get_size().rows
-                    - self.scroll_pos;
-                let fixed_pos = position.into_selection_position(horizontal_offset);
-                self.selection_state.move_mouse(fixed_pos);
+                self.selection_state
+                    .move_mouse(self.pos_conversion(position));
                 self.update_spans(true);
 
                 Action::None
@@ -406,6 +391,12 @@ impl Terminal {
                 Action::None
             }
         }
+    }
+
+    fn pos_conversion(&self, position: GridPosition) -> SelectionPosition {
+        let horizontal_offset =
+            self.term.screen().scrollback_rows() - self.term.get_size().rows - self.scroll_pos;
+        position.into_selection_position(horizontal_offset)
     }
 
     // Helper to update the current iced text representation from the current wezterm data
