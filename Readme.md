@@ -15,7 +15,7 @@ as I've stolen all the ANSI and text grid functionality from them.
 ## Images
 
 ![Screenshot](images/htop.png)
-![Screenshot](select-and-copy/htop.png)
+![Screenshot](images/select-and-copy.png)
 
 ## Features
 
