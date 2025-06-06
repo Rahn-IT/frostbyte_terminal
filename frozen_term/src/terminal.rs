@@ -327,42 +327,34 @@ impl Terminal {
         let screen = self.term.screen();
         let mut selected_text = String::new();
 
-        // Get the range of lines to process
-        let end_line = screen.scrollback_rows().saturating_sub(self.scroll_pos);
-        let start_line = end_line.saturating_sub(screen.physical_rows);
-        let range = start_line..end_line;
+        // Get lines directly from the selection range
+        let range = start_pos.y..end_pos.y + 1;
         let term_lines = screen.lines_in_phys_range(range);
 
         for (line_idx, line) in term_lines.iter().enumerate() {
-            let absolute_line = start_line + line_idx;
+            let line_y = start_pos.y + line_idx;
+            let line_str = line.as_str();
 
-            // Skip lines outside selection
-            if absolute_line < start_pos.y || absolute_line > end_pos.y {
-                continue;
-            }
-
-            let mut line_text = String::new();
-            let mut col_idx = 0;
-
-            for cell in line.visible_cells() {
-                let char_pos = SelectionPosition {
-                    x: col_idx,
-                    y: absolute_line,
-                };
-
-                if self.selection_state.is_position_selected(char_pos) {
-                    line_text.push_str(cell.str());
+            if line_y == start_pos.y && line_y == end_pos.y {
+                // Single line selection
+                let start_x = start_pos.x.min(line_str.len());
+                let end_x = end_pos.x.min(line_str.len());
+                if start_x <= end_x {
+                    selected_text.push_str(&line_str[start_x..end_x]);
                 }
-                col_idx += 1;
-            }
-
-            // Add the line to selected text
-            if !line_text.is_empty() {
-                selected_text.push_str(&line_text);
-                // Add newline if not the last line in selection
-                if absolute_line < end_pos.y {
-                    selected_text.push('\n');
-                }
+            } else if line_y == start_pos.y {
+                // First line of multi-line selection
+                let start_x = start_pos.x.min(line_str.len());
+                selected_text.push_str(&line_str[start_x..]);
+                selected_text.push('\n');
+            } else if line_y == end_pos.y {
+                // Last line of multi-line selection
+                let end_x = (end_pos.x + 1).min(line_str.len());
+                selected_text.push_str(&line_str[..end_x]);
+            } else {
+                // Middle line of multi-line selection
+                selected_text.push_str(&line_str);
+                selected_text.push('\n');
             }
         }
 
