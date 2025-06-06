@@ -141,6 +141,10 @@ enum Message {
     StartSelection(GridPosition),
     MoveSelection(GridPosition),
     EndSelection,
+    ShowContextMenu(iced::Point),
+    HideContextMenu,
+    ContextMenuCopy,
+    ContextMenuPaste,
 }
 
 pub enum Action {
@@ -165,6 +169,7 @@ pub struct Terminal {
     background_color: iced::Color,
     foreground_color: iced::Color,
     cursor_pos: CursorPosition,
+    context_menu_position: Option<iced::Point>,
 }
 
 #[derive(Debug)]
@@ -245,6 +250,7 @@ impl Terminal {
                 background_color,
                 foreground_color,
                 cursor_pos,
+                context_menu_position: None,
             },
             task,
         )
@@ -310,11 +316,13 @@ impl Terminal {
     }
 
     fn get_selected_text(&self) -> Option<String> {
-        let (start_pos, end_pos) = match &self.selection_state {
+        let (start_pos, mut end_pos) = match &self.selection_state {
             SelectionState::Selected { start, end } => (start.clone(), end.clone()),
             SelectionState::Selecting { start, current } => (start.clone(), current.clone()),
             SelectionState::None => return None,
         };
+
+        end_pos.x += 1;
 
         // Normalize selection so start is always before end
         let (start_pos, end_pos) =
@@ -349,7 +357,7 @@ impl Terminal {
                 selected_text.push('\n');
             } else if line_y == end_pos.y {
                 // Last line of multi-line selection
-                let end_x = (end_pos.x + 1).min(line_str.len());
+                let end_x = (end_pos.x).min(line_str.len());
                 selected_text.push_str(&line_str[..end_x]);
             } else {
                 // Middle line of multi-line selection
@@ -376,20 +384,14 @@ impl Terminal {
                     && modifiers.control()
                     && modifiers.shift()
                 {
-                    return Action::Run(
-                        iced::clipboard::read()
-                            .map(Message::Paste)
-                            .map(MessageWrapper),
-                    );
+                    return self.paste();
                 }
 
                 if modified_key == iced::keyboard::Key::Character("C".into())
                     && modifiers.control()
                     && modifiers.shift()
                 {
-                    if let Some(selected_text) = self.get_selected_text() {
-                        return Action::Run(iced::clipboard::write(selected_text));
-                    }
+                    return self.copy();
                 }
 
                 if let Some((key, modifiers)) = transform_key(modified_key, modifiers) {
@@ -451,7 +453,38 @@ impl Terminal {
                 self.update_spans(true);
                 Action::None
             }
+            Message::ShowContextMenu(position) => {
+                self.context_menu_position = Some(position);
+                Action::None
+            }
+            Message::HideContextMenu => {
+                self.context_menu_position = None;
+                Action::None
+            }
+            Message::ContextMenuCopy => {
+                self.context_menu_position = None;
+                self.copy()
+            }
+            Message::ContextMenuPaste => {
+                self.context_menu_position = None;
+                self.paste()
+            }
         }
+    }
+
+    fn copy(&self) -> Action {
+        if let Some(selected_text) = self.get_selected_text() {
+            return Action::Run(iced::clipboard::write(selected_text));
+        }
+        Action::None
+    }
+
+    fn paste(&self) -> Action {
+        Action::Run(
+            iced::clipboard::read()
+                .map(Message::Paste)
+                .map(MessageWrapper),
+        )
     }
 
     fn pos_conversion(&self, position: GridPosition) -> SelectionPosition {
@@ -519,14 +552,58 @@ impl Terminal {
     where
         Renderer: iced::advanced::text::Renderer<Font = iced::Font> + 'static,
         Theme: iced::widget::text::Catalog + 'static,
-        Theme: iced::widget::container::Catalog,
+        Theme: iced::widget::container::Catalog + iced::widget::button::Catalog,
         <Theme as iced::widget::text::Catalog>::Class<'static>:
             From<iced::widget::text::StyleFn<'static, Theme>>,
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
-        iced::Element::new(TerminalWidget::new(self, self.font).id_maybe(self.id.clone()))
-            .map(MessageWrapper)
+        let terminal_widget =
+            iced::Element::new(TerminalWidget::new(self, self.font).id_maybe(self.id.clone()));
+
+        if let Some(position) = self.context_menu_position {
+            let copy_button = iced::widget::button(iced::widget::text("Copy").size(14))
+                .padding([4, 8])
+                .on_press(Message::ContextMenuCopy);
+
+            let paste_button = iced::widget::button(iced::widget::text("Paste").size(14))
+                .padding([4, 8])
+                .on_press(Message::ContextMenuPaste);
+
+            let context_menu = iced::widget::column![copy_button, paste_button].spacing(2);
+
+            let positioned_menu = iced::widget::container(context_menu)
+                .style(|_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgb(
+                        0.2, 0.2, 0.2,
+                    ))),
+                    border: iced::Border {
+                        color: iced::Color::from_rgb(0.5, 0.5, 0.5),
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
+                })
+                .padding(4)
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Shrink);
+
+            // Position the menu using padding to offset it to the cursor position
+            let positioned_container = iced::widget::container(positioned_menu)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .padding(iced::Padding {
+                    top: position.y,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: position.x,
+                });
+
+            iced::widget::stack![terminal_widget, positioned_container].into()
+        } else {
+            terminal_widget
+        }
+        .map(MessageWrapper)
     }
 
     fn push_span(
@@ -862,6 +939,11 @@ where
 
                     // Handle text selection start
                     if *button == iced::mouse::Button::Left {
+                        // Hide context menu if visible
+                        if self.term.context_menu_position.is_some() {
+                            shell.publish(Message::HideContextMenu);
+                        }
+
                         if let Some(cursor_position) = cursor.position() {
                             if let Some(char_pos) = screen_to_grid_position(
                                 cursor_position,
@@ -872,6 +954,14 @@ where
                                 shell.publish(Message::StartSelection(char_pos));
                                 shell.request_redraw();
                             }
+                        }
+                    }
+
+                    // Handle right-click for context menu
+                    if *button == iced::mouse::Button::Right {
+                        if let Some(cursor_position) = cursor.position() {
+                            shell.publish(Message::ShowContextMenu(cursor_position));
+                            shell.request_redraw();
                         }
                     }
 
