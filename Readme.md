@@ -7,7 +7,7 @@ I needed a test application. And after building the terminal itself,
 I just went ahead and kept working on it a bit.
 
 If you want to integrate a terminal into your iced application,
-take a look at [the frozen_term widget](frozen_term/readme.md)
+take a look at [the frozen_term widget](frozen_term/Readme.md)
 
 Many thanks also to the developers of [Wezterm](https://github.com/wezterm/wezterm)
 as I've stolen all the ANSI and text grid functionality from them.
