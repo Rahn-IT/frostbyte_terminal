@@ -296,7 +296,7 @@ impl UI {
 
     fn focus_tab(&self, id: u32) -> Task<Message> {
         Task::future(async move {
-            tokio::time::sleep(Duration::from_micros(300)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
             Message::FocusTab(id)
         })
     }
