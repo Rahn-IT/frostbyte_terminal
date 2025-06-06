@@ -396,6 +396,8 @@ impl Terminal {
 
                 if let Some((key, modifiers)) = transform_key(modified_key, modifiers) {
                     self.term.key_down(key, modifiers).unwrap();
+                    self.scroll_pos = 0;
+                    self.update_spans(true);
                 }
 
                 Action::None
@@ -404,6 +406,8 @@ impl Terminal {
             Message::Paste(paste) => {
                 if let Some(paste) = paste {
                     self.term.send_paste(&paste).unwrap();
+                    self.scroll_pos = 0;
+                    self.update_spans(true);
                 }
                 Action::None
             }
@@ -474,17 +478,21 @@ impl Terminal {
 
     fn copy(&self) -> Action {
         if let Some(selected_text) = self.get_selected_text() {
-            return Action::Run(iced::clipboard::write(selected_text));
+            return Action::Run(iced::Task::batch([
+                iced::clipboard::write(selected_text),
+                self.focus(),
+            ]));
         }
         Action::None
     }
 
     fn paste(&self) -> Action {
-        Action::Run(
+        Action::Run(iced::Task::batch([
             iced::clipboard::read()
                 .map(Message::Paste)
                 .map(MessageWrapper),
-        )
+            self.focus(),
+        ]))
     }
 
     fn pos_conversion(&self, position: GridPosition) -> SelectionPosition {
@@ -494,12 +502,20 @@ impl Terminal {
     }
 
     // Helper to update the current iced text representation from the current wezterm data
-    fn update_spans(&mut self, force: bool) {
+    fn update_spans(&mut self, mut force: bool) {
         let current_seqno = self.term.current_seqno();
+
+        let screen = self.term.screen();
+        let max_scroll = screen
+            .scrollback_rows()
+            .saturating_sub(self.term.get_size().rows);
+
+        if self.scroll_pos > max_scroll {
+            force = true;
+        }
 
         if force || self.last_span_update != current_seqno {
             self.last_span_update = current_seqno;
-            let screen = self.term.screen();
 
             let end = screen.scrollback_rows().saturating_sub(self.scroll_pos);
             let range = end.saturating_sub(screen.physical_rows)..end;
