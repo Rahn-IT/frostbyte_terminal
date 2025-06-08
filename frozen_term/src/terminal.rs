@@ -580,10 +580,12 @@ impl Terminal {
         if let Some(position) = self.context_menu_position {
             let copy_button = iced::widget::button(iced::widget::text("Copy").size(14))
                 .padding([4, 8])
+                .width(iced::Length::Fill)
                 .on_press(Message::ContextMenuCopy);
 
             let paste_button = iced::widget::button(iced::widget::text("Paste").size(14))
                 .padding([4, 8])
+                .width(iced::Length::Fill)
                 .on_press(Message::ContextMenuPaste);
 
             let context_menu = iced::widget::column![copy_button, paste_button].spacing(2);
@@ -601,7 +603,7 @@ impl Terminal {
                     ..Default::default()
                 })
                 .padding(4)
-                .width(iced::Length::Shrink)
+                .width(100)
                 .height(iced::Length::Shrink);
 
             // Position the menu using padding to offset it to the cursor position
