@@ -970,7 +970,10 @@ where
                                 &self.term.padding,
                             ) {
                                 shell.publish(Message::StartSelection(char_pos));
+                                #[cfg(feature = "iced-master")]
                                 shell.request_redraw();
+                                #[cfg(feature = "iced-013")]
+                                shell.request_redraw(iced::window::RedrawRequest::NextFrame);
                             }
                         }
                     }
@@ -979,7 +982,10 @@ where
                     if *button == iced::mouse::Button::Right {
                         if let Some(cursor_position) = cursor.position() {
                             shell.publish(Message::ShowContextMenu(cursor_position));
+                            #[cfg(feature = "iced-master")]
                             shell.request_redraw();
+                            #[cfg(feature = "iced-013")]
+                            shell.request_redraw(iced::window::RedrawRequest::NextFrame);
                         }
                     }
 
