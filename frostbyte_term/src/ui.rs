@@ -229,7 +229,7 @@ impl UI {
                             iced::Point::new(x, 0.0)
                         }),
                         size: iced::Size {
-                            width: 2000.0,
+                            width: 1800.0,
                             height: 600.0,
                         },
                         level: window::Level::AlwaysOnTop,
