@@ -816,6 +816,7 @@ where
 struct State<R: iced::advanced::text::Renderer> {
     focused: bool,
     paragraph: R::Paragraph,
+    last_layout_seqno: usize,
     last_cursor_blink: Instant,
     last_cursor_event: Instant,
     now: Instant,
@@ -1075,6 +1076,7 @@ where
         iced::advanced::widget::tree::State::new(State::<Renderer> {
             focused: false,
             paragraph: Renderer::Paragraph::default(),
+            last_layout_seqno: 0,
             last_cursor_blink: Instant::now(),
             last_cursor_event: Instant::now(),
             now: Instant::now(),
@@ -1108,25 +1110,31 @@ where
     ) -> iced::advanced::layout::Node {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
-        let text = iced::advanced::Text {
-            content: self.term.spans.as_ref(),
-            bounds: limits.max(),
-            size: renderer.default_size(),
-            line_height: iced::advanced::text::LineHeight::default(),
-            font: self.font,
-            #[cfg(feature = "iced-master")]
-            align_x: iced::advanced::text::Alignment::Left,
-            #[cfg(feature = "iced-013")]
-            horizontal_alignment: iced::alignment::Horizontal::Left,
-            #[cfg(feature = "iced-master")]
-            align_y: iced::alignment::Vertical::Top,
-            #[cfg(feature = "iced-013")]
-            vertical_alignment: iced::alignment::Vertical::Top,
-            shaping: iced::widget::text::Shaping::Advanced,
-            wrapping: iced::widget::text::Wrapping::None,
-        };
+        let current_seqno = self.term.term.current_seqno();
 
-        state.paragraph = iced::advanced::text::Paragraph::with_spans(text);
+        if current_seqno != state.last_layout_seqno {
+            let text = iced::advanced::Text {
+                content: self.term.spans.as_ref(),
+                bounds: limits.max(),
+                size: renderer.default_size(),
+                line_height: iced::advanced::text::LineHeight::default(),
+                font: self.font,
+                #[cfg(feature = "iced-master")]
+                align_x: iced::advanced::text::Alignment::Left,
+                #[cfg(feature = "iced-013")]
+                horizontal_alignment: iced::alignment::Horizontal::Left,
+                #[cfg(feature = "iced-master")]
+                align_y: iced::alignment::Vertical::Top,
+                #[cfg(feature = "iced-013")]
+                vertical_alignment: iced::alignment::Vertical::Top,
+                shaping: iced::widget::text::Shaping::Advanced,
+                wrapping: iced::widget::text::Wrapping::None,
+            };
+
+            state.paragraph = iced::advanced::text::Paragraph::with_spans(text);
+
+            state.last_layout_seqno = current_seqno;
+        }
 
         iced::advanced::layout::Node::new(limits.max())
     }
