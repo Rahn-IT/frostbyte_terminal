@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 frozen_term = { path = "../frozen_term", features = ["iced-master"] }
-iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
+iced = { git = "https://github.com/acul009/iced.git", features = ["wgpu"] }
 # iced = { workspace = true }
 tokio-util = { workspace = true }
 sipper = { workspace = true }

@@ -1677,7 +1677,7 @@ dependencies = [
  "frozen_term",
  "global-hotkey",
  "gtk",
- "iced 0.14.0-dev",
+ "iced 0.14.0-dev (git+https://github.com/acul009/iced.git)",
  "iced_layershell",
  "image",
  "sipper",
@@ -1691,7 +1691,7 @@ name = "frozen_term"
 version = "0.4.0"
 dependencies = [
  "iced 0.13.1",
- "iced 0.14.0-dev",
+ "iced 0.14.0-dev (git+https://github.com/acul009/iced.git)",
  "termwiz",
  "thiserror 2.0.12",
  "tokio",
@@ -2360,15 +2360,30 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "iced_core 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_debug 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_renderer 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_runtime 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_widget 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_winit 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "iced"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
- "iced_core 0.14.0-dev",
- "iced_debug",
- "iced_futures 0.14.0-dev",
- "iced_renderer 0.14.0-dev",
- "iced_runtime 0.14.0-dev",
- "iced_widget 0.14.0-dev",
- "iced_winit 0.14.0-dev",
+ "iced_core 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_debug 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_renderer 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_runtime 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_widget 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_winit 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "thiserror 1.0.69",
 ]
 
@@ -2386,6 +2401,24 @@ dependencies = [
  "num-traits",
  "once_cell",
  "palette",
+ "rustc-hash 2.1.1",
+ "smol_str",
+ "thiserror 1.0.69",
+ "web-time",
+]
+
+[[package]]
+name = "iced_core"
+version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "bitflags 2.9.1",
+ "bytes",
+ "dark-light 2.0.0",
+ "glam",
+ "lilt",
+ "log",
+ "num-traits",
  "rustc-hash 2.1.1",
  "smol_str",
  "thiserror 1.0.69",
@@ -2413,10 +2446,20 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "iced_core 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "log",
+]
+
+[[package]]
+name = "iced_debug"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
- "iced_core 0.14.0-dev",
- "iced_futures 0.14.0-dev",
+ "iced_core 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "log",
 ]
 
@@ -2425,9 +2468,9 @@ name = "iced_exdevtools"
 version = "0.14.0-dev"
 source = "git+https://github.com/waycrate/exwlshelleventloop.git?branch=iced14#570eaf2aac12f905db7142c544a877d27294bf9d"
 dependencies = [
- "iced 0.14.0-dev",
- "iced_debug",
- "iced_widget 0.14.0-dev",
+ "iced 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_debug 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_widget 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "log",
 ]
 
@@ -2449,13 +2492,26 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.14.0-dev"
-source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
 dependencies = [
  "futures",
- "iced_core 0.14.0-dev",
+ "iced_core 0.14.0-dev (git+https://github.com/acul009/iced.git)",
  "log",
  "rustc-hash 2.1.1",
  "tokio",
+ "wasm-bindgen-futures",
+ "wasmtimer",
+]
+
+[[package]]
+name = "iced_futures"
+version = "0.14.0-dev"
+source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
+dependencies = [
+ "futures",
+ "iced_core 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "log",
+ "rustc-hash 2.1.1",
  "wasm-bindgen-futures",
  "wasmtimer",
 ]
@@ -2496,14 +2552,32 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "bitflags 2.9.1",
+ "bytemuck",
+ "cosmic-text 0.14.2",
+ "half",
+ "iced_core 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "log",
+ "raw-window-handle",
+ "rustc-hash 2.1.1",
+ "thiserror 1.0.69",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "iced_graphics"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
  "bitflags 2.9.1",
  "bytemuck",
  "cosmic-text 0.14.2",
  "half",
- "iced_core 0.14.0-dev",
- "iced_futures 0.14.0-dev",
+ "iced_core 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "log",
  "raw-window-handle",
  "rustc-hash 2.1.1",
@@ -2518,15 +2592,15 @@ source = "git+https://github.com/waycrate/exwlshelleventloop.git?branch=iced14#5
 dependencies = [
  "enumflags2",
  "futures",
- "iced 0.14.0-dev",
- "iced_core 0.14.0-dev",
- "iced_debug",
+ "iced 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_core 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_debug 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "iced_exdevtools",
- "iced_futures 0.14.0-dev",
- "iced_graphics 0.14.0-dev",
+ "iced_futures 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_graphics 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "iced_layershell_macros",
- "iced_renderer 0.14.0-dev",
- "iced_runtime 0.14.0-dev",
+ "iced_renderer 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_runtime 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "layershellev",
  "log",
  "thiserror 1.0.69",
@@ -2549,10 +2623,19 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "iced_graphics 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_runtime 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+]
+
+[[package]]
+name = "iced_program"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
- "iced_graphics 0.14.0-dev",
- "iced_runtime 0.14.0-dev",
+ "iced_graphics 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_runtime 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
 ]
 
 [[package]]
@@ -2571,11 +2654,23 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "iced_graphics 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_tiny_skia 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_wgpu 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "log",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "iced_renderer"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
- "iced_graphics 0.14.0-dev",
- "iced_tiny_skia 0.14.0-dev",
- "iced_wgpu 0.14.0-dev",
+ "iced_graphics 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_tiny_skia 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_wgpu 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "log",
  "thiserror 1.0.69",
 ]
@@ -2596,12 +2691,25 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "bytes",
+ "iced_core 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_debug 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "raw-window-handle",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "iced_runtime"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
  "bytes",
- "iced_core 0.14.0-dev",
- "iced_debug",
- "iced_futures 0.14.0-dev",
+ "iced_core 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_debug 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_futures 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "raw-window-handle",
  "thiserror 1.0.69",
 ]
@@ -2625,12 +2733,28 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "bytemuck",
+ "cosmic-text 0.14.2",
+ "iced_debug 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_graphics 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "kurbo",
+ "log",
+ "rustc-hash 2.1.1",
+ "softbuffer",
+ "tiny-skia",
+]
+
+[[package]]
+name = "iced_tiny_skia"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
  "bytemuck",
  "cosmic-text 0.14.2",
- "iced_debug",
- "iced_graphics 0.14.0-dev",
+ "iced_debug 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_graphics 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "kurbo",
  "log",
  "rustc-hash 2.1.1",
@@ -2661,6 +2785,25 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "bitflags 2.9.1",
+ "bytemuck",
+ "cryoglyph",
+ "futures",
+ "glam",
+ "guillotiere",
+ "iced_debug 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_graphics 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "log",
+ "rustc-hash 2.1.1",
+ "thiserror 1.0.69",
+ "wgpu 24.0.3",
+]
+
+[[package]]
+name = "iced_wgpu"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
  "bitflags 2.9.1",
@@ -2669,8 +2812,8 @@ dependencies = [
  "futures",
  "glam",
  "guillotiere",
- "iced_debug",
- "iced_graphics 0.14.0-dev",
+ "iced_debug 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_graphics 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "log",
  "rustc-hash 2.1.1",
  "thiserror 1.0.69",
@@ -2695,10 +2838,24 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "iced_renderer 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_runtime 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "log",
+ "num-traits",
+ "rustc-hash 2.1.1",
+ "thiserror 1.0.69",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "iced_widget"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
- "iced_renderer 0.14.0-dev",
- "iced_runtime 0.14.0-dev",
+ "iced_renderer 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_runtime 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "log",
  "num-traits",
  "rustc-hash 2.1.1",
@@ -2729,10 +2886,27 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.14.0-dev"
+source = "git+https://github.com/acul009/iced.git#cbdb52c26d20ef79c1d9954ad31e59495c816d10"
+dependencies = [
+ "iced_debug 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "iced_program 0.14.0-dev (git+https://github.com/acul009/iced.git)",
+ "log",
+ "rustc-hash 2.1.1",
+ "thiserror 1.0.69",
+ "tracing",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "window_clipboard",
+ "winit 0.30.8",
+]
+
+[[package]]
+name = "iced_winit"
+version = "0.14.0-dev"
 source = "git+https://github.com/iced-rs/iced.git#7c5a4bc465ca130cb54d856399e74d2cc962fee1"
 dependencies = [
- "iced_debug",
- "iced_program",
+ "iced_debug 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
+ "iced_program 0.14.0-dev (git+https://github.com/iced-rs/iced.git)",
  "log",
  "rustc-hash 2.1.1",
  "thiserror 1.0.69",

@@ -228,10 +228,9 @@ impl UI {
                             let x = (monitor_res.width - window_size.width) / 2.0;
                             iced::Point::new(x, 0.0)
                         }),
-                        size: iced::Size {
-                            width: 1800.0,
-                            height: 600.0,
-                        },
+                        size: iced::window::Size::FromScreensize(|monitor_res| {
+                            iced::Size::new(monitor_res.width * 0.8, monitor_res.height * 0.45)
+                        }),
                         level: window::Level::AlwaysOnTop,
 
                         ..Default::default()
