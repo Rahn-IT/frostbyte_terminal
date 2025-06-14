@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -7,6 +8,7 @@ use iced::advanced::text::Paragraph;
 use iced::mouse::ScrollDelta;
 #[cfg(feature = "iced-013")]
 use iced_013::{self as iced};
+use iced_master::Pixels;
 #[cfg(feature = "iced-master")]
 use iced_master::{self as iced};
 
@@ -86,7 +88,6 @@ impl SelectionState {
             Self::None => (),
             Self::Selected { .. } => (),
         };
-        println!("selection: {:?}", self);
     }
 
     fn is_position_selected(&self, pos: SelectionPosition) -> bool {
@@ -157,8 +158,10 @@ pub enum Action {
 pub struct Terminal {
     term: wezterm_term::Terminal,
     selection_state: SelectionState,
-    spans: Vec<iced::advanced::text::Span<'static, (), iced::Font>>,
+    formatted_rows: VecDeque<FormattedRow>,
+    first_row_scrollback_pos: usize,
     last_span_update: SequenceNo,
+    last_span_update_scroll_pos: usize,
     id: Option<Id>,
     key_filter: Option<Box<dyn Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool>>,
     // here to abort the task on drop
@@ -170,6 +173,22 @@ pub struct Terminal {
     foreground_color: iced::Color,
     cursor_pos: CursorPosition,
     context_menu_position: Option<iced::Point>,
+    line_height: iced::widget::text::LineHeight,
+    text_size: Option<Pixels>,
+}
+
+struct FormattedRow {
+    last_update_seqno: usize,
+    spans: Vec<iced::advanced::text::Span<'static, (), iced::Font>>,
+}
+
+impl Default for FormattedRow {
+    fn default() -> Self {
+        FormattedRow {
+            last_update_seqno: 0,
+            spans: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -221,7 +240,6 @@ impl Terminal {
             Box::new(writer),
         );
 
-        let last_span_update = term.current_seqno();
         let palette = term.palette();
         let (r, g, b, a) = palette.background.to_tuple_rgba();
         let background_color = iced::Color::from_rgba(r, g, b, a);
@@ -239,8 +257,10 @@ impl Terminal {
             Self {
                 term,
                 selection_state: SelectionState::None,
-                spans: Vec::new(),
-                last_span_update,
+                formatted_rows: VecDeque::new(),
+                first_row_scrollback_pos: 0,
+                last_span_update: 0,
+                last_span_update_scroll_pos: 0,
                 id: None,
                 _handle: handle,
                 key_filter: None,
@@ -251,6 +271,8 @@ impl Terminal {
                 foreground_color,
                 cursor_pos,
                 context_menu_position: None,
+                line_height: iced::widget::text::LineHeight::default(),
+                text_size: None,
             },
             task,
         )
@@ -312,7 +334,7 @@ impl Terminal {
         B: AsRef<[u8]>,
     {
         self.term.advance_bytes(bytes);
-        self.update_spans(false);
+        self.update_formatted_rows(false);
     }
 
     fn get_selected_text(&self) -> Option<String> {
@@ -397,7 +419,7 @@ impl Terminal {
                 if let Some((key, modifiers)) = transform_key(modified_key, modifiers) {
                     self.term.key_down(key, modifiers).unwrap();
                     self.scroll_pos = 0;
-                    self.update_spans(true);
+                    self.update_formatted_rows(false);
                 }
 
                 Action::None
@@ -407,7 +429,7 @@ impl Terminal {
                 if let Some(paste) = paste {
                     self.term.send_paste(&paste).unwrap();
                     self.scroll_pos = 0;
-                    self.update_spans(true);
+                    self.update_formatted_rows(false);
                 }
                 Action::None
             }
@@ -429,32 +451,31 @@ impl Terminal {
                     }
                 };
 
-                let max_scrollback =
-                    self.term.screen().scrollback_rows() - self.term.screen().physical_rows;
+                let force_redraw = match self.selection_state {
+                    SelectionState::None => false,
+                    SelectionState::Selecting { .. } => true,
+                    SelectionState::Selected { .. } => false,
+                };
 
-                if self.scroll_pos > max_scrollback {
-                    self.scroll_pos = max_scrollback;
-                }
-
-                self.update_spans(true);
+                self.update_formatted_rows(force_redraw);
 
                 Action::None
             }
             Message::StartSelection(position) => {
                 self.selection_state.start(self.pos_conversion(position));
-                self.update_spans(true);
+                self.update_formatted_rows(true);
                 Action::None
             }
             Message::MoveSelection(position) => {
                 self.selection_state
                     .move_mouse(self.pos_conversion(position));
-                self.update_spans(true);
+                self.update_formatted_rows(true);
 
                 Action::None
             }
             Message::EndSelection => {
                 self.selection_state.stop();
-                self.update_spans(true);
+                self.update_formatted_rows(true);
                 Action::None
             }
             Message::ShowContextMenu(position) => {
@@ -502,66 +523,116 @@ impl Terminal {
     }
 
     // Helper to update the current iced text representation from the current wezterm data
-    fn update_spans(&mut self, mut force: bool) {
-        let current_seqno = self.term.current_seqno();
+    fn update_formatted_rows(&mut self, force: bool) {
+        if force {
+            self.term.increment_seqno();
+        }
 
         let screen = self.term.screen();
         let max_scroll = screen
             .scrollback_rows()
             .saturating_sub(self.term.get_size().rows);
 
+        // This usually only happens on a `clear` command
         if self.scroll_pos > max_scroll {
-            force = true;
+            self.scroll_pos = max_scroll;
         }
 
-        if force || self.last_span_update != current_seqno {
-            self.last_span_update = current_seqno;
+        if self.needs_row_update() || force {
+            self.last_span_update = self.term.current_seqno();
+            self.last_span_update_scroll_pos = self.scroll_pos;
 
-            let end = screen.scrollback_rows().saturating_sub(self.scroll_pos);
-            let range = end.saturating_sub(screen.physical_rows)..end;
-            let term_lines = screen.lines_in_phys_range(range);
+            let visible_rows_end = screen.scrollback_rows().saturating_sub(self.scroll_pos);
+            let visible_rows_start = visible_rows_end.saturating_sub(screen.physical_rows);
+            let visible_range = visible_rows_start..visible_rows_end;
 
-            let mut current_text = String::new();
-            let mut current_attrs = CellAttributes::default();
-            self.spans.clear();
+            let term_lines = screen.lines_in_phys_range(visible_range);
 
             let palette = self.term.palette();
 
             self.cursor_pos = self.term.cursor_pos();
 
-            let mut current_line_idx = 0;
             let mut is_current_selected = false;
-            let range_start = end.saturating_sub(screen.physical_rows);
+            let range_start = visible_rows_end.saturating_sub(screen.physical_rows);
+            let mut absolute_line = range_start;
 
-            for line in term_lines.iter() {
-                let absolute_line = range_start + current_line_idx;
-                let mut current_col_idx = 0;
-
-                for cell in line.visible_cells() {
-                    let char_pos = SelectionPosition {
-                        x: current_col_idx,
-                        y: absolute_line,
-                    };
-
-                    let is_selected = self.selection_state.is_position_selected(char_pos);
-
-                    // Check if we need to break the span due to attribute changes or selection changes
-                    if cell.attrs() != &current_attrs || is_selected != is_current_selected {
-                        self.push_span(current_text, current_attrs, &palette, is_current_selected);
-                        current_attrs = cell.attrs().clone();
-                        is_current_selected = is_selected;
-                        current_text = String::new();
-                    }
-
-                    current_text.push_str(cell.str());
-                    current_col_idx += 1;
+            // Remove or add rows at the top
+            if self.first_row_scrollback_pos > range_start {
+                for _ in range_start..self.first_row_scrollback_pos {
+                    self.formatted_rows.push_front(FormattedRow::default());
                 }
-                current_text.push('\n');
-                current_line_idx += 1;
+            } else if self.first_row_scrollback_pos < range_start {
+                for _ in self.first_row_scrollback_pos..range_start {
+                    self.formatted_rows.pop_front();
+                }
+            }
+            self.first_row_scrollback_pos = range_start;
+
+            // Remove or add rows at the bottom
+            while self.formatted_rows.len() < screen.physical_rows {
+                self.formatted_rows.push_back(FormattedRow::default());
+            }
+            while self.formatted_rows.len() > screen.physical_rows {
+                self.formatted_rows.pop_back();
             }
 
-            self.push_span(current_text, current_attrs, &palette, is_current_selected);
+            for (line, formatted_row) in term_lines.iter().zip(self.formatted_rows.iter_mut()) {
+                let mut current_col_idx = 0;
+
+                let mut current_text = String::new();
+                let mut current_attrs = CellAttributes::default();
+
+                if line.current_seqno() != formatted_row.last_update_seqno || force {
+                    formatted_row.last_update_seqno = self.term.current_seqno();
+                    formatted_row.spans.clear();
+
+                    for cell in line.visible_cells() {
+                        let char_pos = SelectionPosition {
+                            x: current_col_idx,
+                            y: absolute_line,
+                        };
+
+                        let is_selected = self.selection_state.is_position_selected(char_pos);
+
+                        // Check if we need to break the span due to attribute changes or selection changes
+                        if cell.attrs() != &current_attrs || is_selected != is_current_selected {
+                            Self::push_span(
+                                &mut formatted_row.spans,
+                                current_text,
+                                current_attrs,
+                                &palette,
+                                is_current_selected,
+                                &self.foreground_color,
+                                &self.background_color,
+                            );
+                            current_attrs = cell.attrs().clone();
+                            is_current_selected = is_selected;
+                            current_text = String::new();
+                        }
+
+                        current_text.push_str(cell.str());
+                        current_col_idx += 1;
+                    }
+
+                    Self::push_span(
+                        &mut formatted_row.spans,
+                        current_text,
+                        current_attrs,
+                        &palette,
+                        is_current_selected,
+                        &self.foreground_color,
+                        &self.background_color,
+                    );
+
+                    absolute_line += 1;
+                }
+            }
         }
+    }
+
+    fn needs_row_update(&self) -> bool {
+        self.last_span_update != self.term.current_seqno()
+            || self.scroll_pos != self.last_span_update_scroll_pos
     }
 
     pub fn view<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, MessageWrapper, Theme, Renderer>
@@ -625,16 +696,18 @@ impl Terminal {
     }
 
     fn push_span(
-        &mut self,
+        formatted_row: &mut Vec<iced::advanced::text::Span<'static, (), iced::Font>>,
         current_text: String,
         attributes: CellAttributes,
         palette: &ColorPalette,
         is_selected: bool,
+        foreground_color: &iced::Color,
+        background_color: &iced::Color,
     ) {
         let mut background =
-            get_color(attributes.background(), palette).unwrap_or_else(|| self.background_color);
+            get_color(attributes.background(), palette).unwrap_or_else(|| background_color.clone());
         let mut foreground =
-            get_color(attributes.foreground(), palette).unwrap_or_else(|| self.foreground_color);
+            get_color(attributes.foreground(), palette).unwrap_or_else(|| foreground_color.clone());
 
         if !current_text.is_empty() {
             // Apply reverse colors for original cell attributes
@@ -647,7 +720,7 @@ impl Terminal {
                 .background(background)
                 .underline(attributes.underline() != Underline::None);
 
-            self.spans.push(span);
+            formatted_row.push(span);
         }
     }
 }
@@ -811,19 +884,148 @@ where
         self.id = id;
         self
     }
+
+    fn screen_to_grid_position<Renderer>(
+        &self,
+        screen_pos: iced::Point,
+        layout: iced::advanced::Layout<'_>,
+        renderer: &Renderer,
+    ) -> Option<GridPosition>
+    where
+        Renderer: iced::advanced::text::Renderer,
+    {
+        let padding_offset = iced::Vector::new(self.term.padding.left, self.term.padding.top);
+        let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
+
+        // Convert screen position to position relative to terminal content
+        let relative_pos = screen_pos - translation;
+
+        // Check if position is within terminal bounds
+        if relative_pos.x < 0.0 || relative_pos.y < 0.0 {
+            return None;
+        }
+
+        // Calculate character dimensions
+        let text_size = self
+            .term
+            .text_size
+            .unwrap_or_else(|| renderer.default_size());
+        let line_height = self.term.line_height.to_absolute(text_size).0;
+        let text_size = text_size.0;
+        let char_width = text_size * CHAR_WIDTH;
+
+        // Convert to character coordinates
+        let char_x = (relative_pos.x / char_width) as usize;
+        let char_y = (relative_pos.y / line_height) as usize;
+
+        // Account for scroll offset - the displayed text is offset by scroll_pos
+        let absolute_y = char_y;
+
+        Some(GridPosition {
+            x: char_x,
+            y: absolute_y,
+        })
+    }
+
+    fn draw_cursor<Renderer>(
+        &self,
+        renderer: &mut Renderer,
+        state: &State<Renderer>,
+        translation: iced::Vector,
+    ) where
+        Renderer: iced::advanced::text::Renderer,
+    {
+        let is_cursor_visible = self.term.cursor_pos.visibility == CursorVisibility::Visible
+            && ((state.now - state.last_cursor_event).as_millis() < CURSOR_BLINK_INTERVAL_MILLIS
+                || ((state.now - state.last_cursor_blink).as_millis()
+                    / CURSOR_BLINK_INTERVAL_MILLIS)
+                    % 2
+                    == 0);
+
+        if !is_cursor_visible {
+            return;
+        }
+
+        let screen = self.term.term.screen();
+
+        // Calculate the scroll-adjusted cursor position using your custom scroll system
+        // The cursor position is absolute, but we need to adjust it by the scroll offset
+        let cursor_absolute_y = self.term.cursor_pos.y as i64;
+        let scroll_offset = self.term.scroll_pos as i64;
+        let visible_cursor_y = cursor_absolute_y + scroll_offset;
+
+        // Check if cursor is within the visible area
+        if visible_cursor_y < 0 || visible_cursor_y >= screen.physical_rows as i64 {
+            // Cursor is outside the visible area due to scrolling
+            return;
+        }
+
+        // Calculate character dimensions
+        let text_size = self
+            .term
+            .text_size
+            .unwrap_or_else(|| renderer.default_size());
+
+        let line_height = self.term.line_height.to_absolute(text_size).0;
+        let text_size = text_size.0;
+        let char_width = text_size * CHAR_WIDTH;
+
+        let base_cursor_position = iced::Point::new(
+            self.term.cursor_pos.x as f32 * char_width,
+            visible_cursor_y as f32 * line_height,
+        );
+
+        let padding = 1.0;
+
+        let cursor_bounds = match self.term.cursor_pos.shape {
+            CursorShape::BlinkingUnderline
+            | CursorShape::SteadyUnderline
+            | CursorShape::Default => iced::Rectangle::new(
+                base_cursor_position
+                    + translation
+                    + iced::Vector::new(0.0, renderer.default_size().0 * 1.2),
+                iced::Size::new(renderer.default_size().0 * CHAR_WIDTH, 1.0),
+            ),
+            CursorShape::BlinkingBlock | CursorShape::SteadyBlock => iced::Rectangle::new(
+                base_cursor_position + translation + iced::Vector::new(padding, padding),
+                iced::Size::new(
+                    renderer.default_size().0 * CHAR_WIDTH - padding,
+                    renderer.default_size().0 * 1.3 - padding,
+                ),
+            ),
+            CursorShape::BlinkingBar | CursorShape::SteadyBar => iced::Rectangle::new(
+                base_cursor_position + translation + iced::Vector::new(padding, padding),
+                iced::Size::new(1.0, renderer.default_size().0 * 1.3 - padding),
+            ),
+        };
+
+        renderer.fill_quad(
+            iced::advanced::renderer::Quad {
+                bounds: cursor_bounds,
+                border: iced::Border::default(),
+                ..Default::default()
+            },
+            iced::Color::WHITE,
+        );
+    }
 }
 
 struct State<R: iced::advanced::text::Renderer> {
     focused: bool,
-    paragraph: R::Paragraph,
-    last_layout_seqno: usize,
+    first_row_scrollback_pos: usize,
+    rows: VecDeque<ParagraphRow<R>>,
     last_cursor_blink: Instant,
     last_cursor_event: Instant,
     now: Instant,
 }
 
+struct ParagraphRow<R: iced::advanced::text::Renderer> {
+    paragraph: R::Paragraph,
+    last_layout_seqno: usize,
+}
+
 const CHAR_WIDTH: f32 = 0.6;
-const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 500;
+const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 250;
 
 impl<Renderer> iced::advanced::widget::operation::Focusable for State<Renderer>
 where
@@ -840,44 +1042,6 @@ where
     fn unfocus(&mut self) {
         self.focused = false;
     }
-}
-
-fn screen_to_grid_position<Renderer>(
-    screen_pos: iced::Point,
-    layout: iced::advanced::Layout<'_>,
-    renderer: &Renderer,
-    padding: &iced::Padding,
-) -> Option<GridPosition>
-where
-    Renderer: iced::advanced::text::Renderer,
-{
-    let padding_offset = iced::Vector::new(padding.left, padding.top);
-    let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
-
-    // Convert screen position to position relative to terminal content
-    let relative_pos = screen_pos - translation;
-
-    // Check if position is within terminal bounds
-    if relative_pos.x < 0.0 || relative_pos.y < 0.0 {
-        return None;
-    }
-
-    // Calculate character dimensions
-    let font_size = renderer.default_size().0;
-    let char_width = font_size * CHAR_WIDTH;
-    let line_height = font_size * 1.3;
-
-    // Convert to character coordinates
-    let char_x = (relative_pos.x / char_width) as usize;
-    let char_y = (relative_pos.y / line_height) as usize;
-
-    // Account for scroll offset - the displayed text is offset by scroll_pos
-    let absolute_y = char_y;
-
-    Some(GridPosition {
-        x: char_x,
-        y: absolute_y,
-    })
 }
 
 impl<Renderer> TerminalWidget<'_, Renderer>
@@ -964,12 +1128,9 @@ where
                         }
 
                         if let Some(cursor_position) = cursor.position() {
-                            if let Some(char_pos) = screen_to_grid_position(
-                                cursor_position,
-                                layout,
-                                renderer,
-                                &self.term.padding,
-                            ) {
+                            if let Some(char_pos) =
+                                self.screen_to_grid_position(cursor_position, layout, renderer)
+                            {
                                 shell.publish(Message::StartSelection(char_pos));
                                 #[cfg(feature = "iced-master")]
                                 shell.request_redraw();
@@ -996,11 +1157,16 @@ where
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                if let SelectionState::Selecting { .. } = &self.term.selection_state {
+                if let SelectionState::Selecting { current, .. } = &self.term.selection_state {
                     if let Some(char_pos) =
-                        screen_to_grid_position(*position, layout, renderer, &self.term.padding)
+                        self.screen_to_grid_position(*position, layout, renderer)
                     {
-                        shell.publish(Message::MoveSelection(char_pos));
+                        let horizontal_offset = self.term.term.screen().scrollback_rows()
+                            - self.term.term.get_size().rows
+                            - self.term.scroll_pos;
+                        if &char_pos.into_selection_position(horizontal_offset) != current {
+                            shell.publish(Message::MoveSelection(char_pos));
+                        }
                     }
                     iced::advanced::graphics::core::event::Status::Captured
                 } else {
@@ -1075,8 +1241,8 @@ where
     fn state(&self) -> iced::advanced::widget::tree::State {
         iced::advanced::widget::tree::State::new(State::<Renderer> {
             focused: false,
-            paragraph: Renderer::Paragraph::default(),
-            last_layout_seqno: 0,
+            rows: VecDeque::new(),
+            first_row_scrollback_pos: 0,
             last_cursor_blink: Instant::now(),
             last_cursor_event: Instant::now(),
             now: Instant::now(),
@@ -1110,13 +1276,51 @@ where
     ) -> iced::advanced::layout::Node {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
-        let current_seqno = self.term.term.current_seqno();
+        // Add or remove rows from the front
+        if state.first_row_scrollback_pos > self.term.first_row_scrollback_pos {
+            for _ in self.term.first_row_scrollback_pos..state.first_row_scrollback_pos {
+                state.rows.push_front(ParagraphRow {
+                    last_layout_seqno: 0,
+                    paragraph: Renderer::Paragraph::default(),
+                });
+            }
+        } else if state.first_row_scrollback_pos < self.term.first_row_scrollback_pos {
+            for _ in state.first_row_scrollback_pos..self.term.first_row_scrollback_pos {
+                state.rows.pop_front();
+            }
+        }
+        state.first_row_scrollback_pos = self.term.first_row_scrollback_pos;
 
-        if current_seqno != state.last_layout_seqno {
+        while state.rows.len() < self.term.formatted_rows.len() {
+            state.rows.push_back(ParagraphRow {
+                last_layout_seqno: 0,
+                paragraph: Renderer::Paragraph::default(),
+            });
+        }
+        while state.rows.len() > self.term.formatted_rows.len() {
+            state.rows.pop_back();
+        }
+
+        for (paragraph_row, formatted_row) in
+            state.rows.iter_mut().zip(self.term.formatted_rows.iter())
+        {
+            if paragraph_row.last_layout_seqno == formatted_row.last_update_seqno {
+                continue;
+            }
+            paragraph_row.last_layout_seqno = formatted_row.last_update_seqno;
+
+            let text_size = self
+                .term
+                .text_size
+                .unwrap_or_else(|| renderer.default_size());
+
             let text = iced::advanced::Text {
-                content: self.term.spans.as_ref(),
-                bounds: limits.max(),
-                size: renderer.default_size(),
+                content: formatted_row.spans.as_ref(),
+                bounds: iced::Size::new(
+                    limits.max().width,
+                    self.term.line_height.to_absolute(text_size).0,
+                ),
+                size: text_size,
                 line_height: iced::advanced::text::LineHeight::default(),
                 font: self.font,
                 #[cfg(feature = "iced-master")]
@@ -1131,9 +1335,7 @@ where
                 wrapping: iced::widget::text::Wrapping::None,
             };
 
-            state.paragraph = iced::advanced::text::Paragraph::with_spans(text);
-
-            state.last_layout_seqno = current_seqno;
+            paragraph_row.paragraph = iced::advanced::text::Paragraph::with_spans(text);
         }
 
         iced::advanced::layout::Node::new(limits.max())
@@ -1199,109 +1401,52 @@ where
             },
             self.term.background_color,
         );
-
         // drawing text background
-        for (index, span) in self.term.spans.iter().enumerate() {
-            if let Some(highlight) = span.highlight {
-                let regions = state.paragraph.span_bounds(index);
+        for (row_index, (paragraph_row, formatted_row)) in state
+            .rows
+            .iter()
+            .zip(self.term.formatted_rows.iter())
+            .enumerate()
+        {
+            let paragraph = &paragraph_row.paragraph;
+            let y_offset =
+                paragraph.line_height().to_absolute(paragraph.size()).0 * row_index as f32;
 
-                for bounds in &regions {
-                    let bounds = iced::Rectangle::new(
-                        bounds.position() - iced::Vector::new(span.padding.left, span.padding.top),
-                        bounds.size()
-                            + iced::Size::new(span.padding.horizontal(), span.padding.vertical()),
-                    );
+            for (index, span) in formatted_row.spans.iter().enumerate() {
+                if let Some(highlight) = span.highlight {
+                    let regions = paragraph.span_bounds(index);
 
-                    renderer.fill_quad(
-                        iced::advanced::renderer::Quad {
-                            bounds: bounds + translation,
-                            border: highlight.border,
-                            ..Default::default()
-                        },
-                        highlight.background,
-                    );
+                    for bounds in &regions {
+                        let bounds = iced::Rectangle::new(
+                            bounds.position()
+                                - iced::Vector::new(span.padding.left, span.padding.top),
+                            bounds.size()
+                                + iced::Size::new(
+                                    span.padding.horizontal(),
+                                    span.padding.vertical(),
+                                ),
+                        );
+
+                        renderer.fill_quad(
+                            iced::advanced::renderer::Quad {
+                                bounds: bounds + translation + iced::Vector::new(0.0, y_offset),
+                                border: highlight.border,
+                                ..Default::default()
+                            },
+                            highlight.background,
+                        );
+                    }
                 }
             }
+
+            renderer.fill_paragraph(
+                &paragraph,
+                bounds.position() + padding_offset + iced::Vector::new(0.0, y_offset),
+                self.term.foreground_color,
+                bounds,
+            );
         }
 
-        draw_cursor(renderer, &state, translation, &self.term);
-
-        renderer.fill_paragraph(
-            &state.paragraph,
-            bounds.position() + padding_offset,
-            iced::Color::WHITE,
-            bounds,
-        );
+        self.draw_cursor(renderer, &state, translation);
     }
-}
-
-fn draw_cursor<Renderer>(
-    renderer: &mut Renderer,
-    state: &State<Renderer>,
-    translation: iced::Vector,
-    term: &Terminal,
-) where
-    Renderer: iced::advanced::text::Renderer,
-{
-    let is_cursor_visible = term.cursor_pos.visibility == CursorVisibility::Visible
-        && ((state.now - state.last_cursor_event).as_millis() < CURSOR_BLINK_INTERVAL_MILLIS
-            || ((state.now - state.last_cursor_blink).as_millis() / CURSOR_BLINK_INTERVAL_MILLIS)
-                % 2
-                == 0);
-
-    if !is_cursor_visible {
-        return;
-    }
-
-    let screen = term.term.screen();
-
-    // Calculate the scroll-adjusted cursor position using your custom scroll system
-    // The cursor position is absolute, but we need to adjust it by the scroll offset
-    let cursor_absolute_y = term.cursor_pos.y as i64;
-    let scroll_offset = term.scroll_pos as i64;
-    let visible_cursor_y = cursor_absolute_y + scroll_offset;
-
-    // Check if cursor is within the visible area
-    if visible_cursor_y < 0 || visible_cursor_y >= screen.physical_rows as i64 {
-        // Cursor is outside the visible area due to scrolling
-        return;
-    }
-
-    let base_cursor_position = iced::Point::new(
-        term.cursor_pos.x as f32 * renderer.default_size().0 * CHAR_WIDTH,
-        visible_cursor_y as f32 * renderer.default_size().0 * 1.3,
-    );
-
-    let padding = 1.0;
-
-    let cursor_bounds = match term.cursor_pos.shape {
-        CursorShape::BlinkingUnderline | CursorShape::SteadyUnderline | CursorShape::Default => {
-            iced::Rectangle::new(
-                base_cursor_position
-                    + translation
-                    + iced::Vector::new(0.0, renderer.default_size().0 * 1.2),
-                iced::Size::new(renderer.default_size().0 * CHAR_WIDTH, 1.0),
-            )
-        }
-        CursorShape::BlinkingBlock | CursorShape::SteadyBlock => iced::Rectangle::new(
-            base_cursor_position + translation + iced::Vector::new(padding, padding),
-            iced::Size::new(
-                renderer.default_size().0 * CHAR_WIDTH - padding,
-                renderer.default_size().0 * 1.3 - padding,
-            ),
-        ),
-        CursorShape::BlinkingBar | CursorShape::SteadyBar => iced::Rectangle::new(
-            base_cursor_position + translation + iced::Vector::new(padding, padding),
-            iced::Size::new(1.0, renderer.default_size().0 * 1.3 - padding),
-        ),
-    };
-
-    renderer.fill_quad(
-        iced::advanced::renderer::Quad {
-            bounds: cursor_bounds,
-            border: iced::Border::default(),
-            ..Default::default()
-        },
-        iced::Color::WHITE,
-    );
 }
