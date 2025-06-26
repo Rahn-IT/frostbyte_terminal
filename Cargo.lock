@@ -1680,6 +1680,7 @@ dependencies = [
  "iced 0.14.0-dev",
  "iced_layershell",
  "image",
+ "signal-hook",
  "sipper",
  "tokio",
  "tokio-util",
