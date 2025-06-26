@@ -1,4 +1,12 @@
-use std::{collections::BTreeMap, fmt::Debug, sync::{atomic::{AtomicUsize, Ordering}, Arc}, time::Duration};
+use std::{
+    collections::BTreeMap,
+    fmt::Debug,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use signal_hook::consts::signal::SIGUSR1;
 use signal_hook::flag as signal_flag;
@@ -430,11 +438,11 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
 
         // poll for global hotkey events every 50ms
         loop {
-            //remeber to zero out term and reset the listener
+            // You need to zero out and reset listener in loop
             if term.load(Ordering::Relaxed) == SIGUSR1_U {
                 if let Err(err) = sender.send(Message::Hotkey).await {
-                        eprintln!("Error sending hotkey message: {}", err);
-                    }
+                    eprintln!("Error sending hotkey message: {}", err);
+                }
                 term = Arc::new(AtomicUsize::new(0));
                 signal_flag::register_usize(SIGUSR1, Arc::clone(&term), SIGUSR1_U).unwrap();
             }
