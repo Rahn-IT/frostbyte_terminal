@@ -432,19 +432,19 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
         let tray_menu_receiver = tray_icon::menu::MenuEvent::receiver();
         let tray_icon_receiver = tray_icon::TrayIconEvent::receiver();
 
-        let mut term = Arc::new(AtomicUsize::new(0));
+        let mut flag_counter = Arc::new(AtomicUsize::new(0));
         const SIGUSR1_U: usize = SIGUSR1 as usize;
-        signal_flag::register_usize(SIGUSR1, Arc::clone(&term), SIGUSR1_U).unwrap();
+        signal_flag::register_usize(SIGUSR1, Arc::clone(&flag_counter), SIGUSR1_U).unwrap();
 
         // poll for global hotkey events every 50ms
         loop {
             // You need to zero out and reset listener in loop
-            if term.load(Ordering::Relaxed) == SIGUSR1_U {
+            if flag_counter.load(Ordering::Relaxed) == SIGUSR1_U {
                 if let Err(err) = sender.send(Message::Hotkey).await {
                     eprintln!("Error sending hotkey message: {}", err);
                 }
-                term = Arc::new(AtomicUsize::new(0));
-                signal_flag::register_usize(SIGUSR1, Arc::clone(&term), SIGUSR1_U).unwrap();
+                flag_counter = Arc::new(AtomicUsize::new(0));
+                signal_flag::register_usize(SIGUSR1, Arc::clone(&flag_counter), SIGUSR1_U).unwrap();
             }
 
             if let Ok(event) = hotkey_receiver.try_recv() {
