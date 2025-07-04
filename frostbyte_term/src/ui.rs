@@ -1,4 +1,15 @@
-use std::{collections::BTreeMap, fmt::Debug, time::Duration};
+use std::{
+    collections::BTreeMap,
+    fmt::Debug,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+
+use signal_hook::consts::signal::SIGUSR1;
+use signal_hook::flag as signal_flag;
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
@@ -420,8 +431,22 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
 
         let tray_menu_receiver = tray_icon::menu::MenuEvent::receiver();
         let tray_icon_receiver = tray_icon::TrayIconEvent::receiver();
+
+        let mut flag_counter = Arc::new(AtomicUsize::new(0));
+        const SIGUSR1_U: usize = SIGUSR1 as usize;
+        signal_flag::register_usize(SIGUSR1, Arc::clone(&flag_counter), SIGUSR1_U).unwrap();
+
         // poll for global hotkey events every 50ms
         loop {
+            // You need to zero out and reset listener in loop
+            if flag_counter.load(Ordering::Relaxed) == SIGUSR1_U {
+                if let Err(err) = sender.send(Message::Hotkey).await {
+                    eprintln!("Error sending hotkey message: {}", err);
+                }
+                flag_counter = Arc::new(AtomicUsize::new(0));
+                signal_flag::register_usize(SIGUSR1, Arc::clone(&flag_counter), SIGUSR1_U).unwrap();
+            }
+
             if let Ok(event) = hotkey_receiver.try_recv() {
                 if event.state() == HotKeyState::Pressed {
                     if let Err(err) = sender.send(Message::Hotkey).await {
