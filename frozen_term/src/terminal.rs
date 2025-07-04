@@ -4,11 +4,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use iced::Pixels;
 use iced::advanced::text::Paragraph;
 use iced::mouse::ScrollDelta;
 #[cfg(feature = "iced-013")]
 use iced_013::{self as iced};
-use iced_master::Pixels;
 #[cfg(feature = "iced-master")]
 use iced_master::{self as iced};
 
@@ -1401,6 +1401,14 @@ where
             },
             self.term.background_color,
         );
+
+        let size = self
+            .term
+            .text_size
+            .unwrap_or_else(|| renderer.default_size());
+
+        let y_multiplier = self.term.line_height.to_absolute(size).0;
+
         // drawing text background
         for (row_index, (paragraph_row, formatted_row)) in state
             .rows
@@ -1409,8 +1417,7 @@ where
             .enumerate()
         {
             let paragraph = &paragraph_row.paragraph;
-            let y_offset =
-                paragraph.line_height().to_absolute(paragraph.size()).0 * row_index as f32;
+            let y_offset = y_multiplier * row_index as f32;
 
             for (index, span) in formatted_row.spans.iter().enumerate() {
                 if let Some(highlight) = span.highlight {
