@@ -8,7 +8,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(target_os = "linux")]
 use signal_hook::consts::signal::SIGUSR1;
+#[cfg(target_os = "linux")]
 use signal_hook::flag as signal_flag;
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
@@ -431,13 +433,17 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
         let tray_menu_receiver = tray_icon::menu::MenuEvent::receiver();
         let tray_icon_receiver = tray_icon::TrayIconEvent::receiver();
 
+        #[cfg(target_os = "linux")]
         let mut flag_counter = Arc::new(AtomicUsize::new(0));
+        #[cfg(target_os = "linux")]
         const SIGUSR1_U: usize = SIGUSR1 as usize;
+        #[cfg(target_os = "linux")]
         signal_flag::register_usize(SIGUSR1, Arc::clone(&flag_counter), SIGUSR1_U).unwrap();
 
         // poll for global hotkey events every 50ms
         loop {
             // You need to zero out and reset listener in loop
+            #[cfg(target_os = "linux")]
             if flag_counter.load(Ordering::Relaxed) == SIGUSR1_U {
                 if let Err(err) = sender.send(Message::Hotkey).await {
                     eprintln!("Error sending hotkey message: {}", err);
