@@ -9,3 +9,15 @@ anyhow = "1.0.98"
 sipper = "0.1.0"
 thiserror = "2.0.12"
 tokio-util = { version = "0.7.15", features = ["rt"] }
+
+[patch."https://github.com/iced-rs/iced.git"]
+iced = { git = "https://github.com/acul009/iced.git" }
+iced_runtime = { git = "https://github.com/acul009/iced.git" }
+iced_core = { git = "https://github.com/acul009/iced.git" }
+iced_program = { git = "https://github.com/acul009/iced.git" }
+iced_renderer = { git = "https://github.com/acul009/iced.git" }
+iced_futures = { git = "https://github.com/acul009/iced.git" }
+iced_graphics = { git = "https://github.com/acul009/iced.git" }
+iced_debug = { git = "https://github.com/acul009/iced.git" }
+iced_devtools = { git = "https://github.com/acul009/iced.git" }
+iced_widget = { git = "https://github.com/acul009/iced.git" }
