@@ -28,6 +28,8 @@ This is still really basic. If you have requests for the widget or application, 
 - Copy and paste via context menu or (Ctrl + Shift + C/V)
 - Color support
 
+If your compositor doesn't support global hotkeys, you can set a hotkey to execute `pkill -USR1 frostbyte_term`.
+
 ## Architecture
 
 Frostbyte uses the [rust ui framework iced.](https://iced.rs/)
