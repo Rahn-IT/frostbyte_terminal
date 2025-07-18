@@ -1,10 +1,9 @@
+use std::{collections::BTreeMap, fmt::Debug};
+
+#[cfg(target_os = "linux")]
 use std::{
-    collections::BTreeMap,
-    fmt::Debug,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
+    Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 #[cfg(target_os = "linux")]
@@ -229,6 +228,7 @@ impl UI {
             Message::ExclusiveZoneChange { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
             Message::NewInputPanel { .. } => unreachable!(),
+            #[cfg(target_os = "linux")]
             Message::NewBaseWindow { .. } => unreachable!(),
         }
     }
