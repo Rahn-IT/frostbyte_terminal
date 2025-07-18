@@ -147,6 +147,7 @@ enum Message {
     HideContextMenu,
     ContextMenuCopy,
     ContextMenuPaste,
+    IdChanged,
 }
 
 pub enum Action {
@@ -154,6 +155,7 @@ pub enum Action {
     Run(iced::Task<MessageWrapper>),
     Resize(TerminalSize),
     Input(Vec<u8>),
+    IdChanged,
 }
 
 pub struct Terminal {
@@ -308,6 +310,7 @@ impl Terminal {
     where
         T: Send + 'static,
     {
+        println!("focus task {:?}:", self.id);
         Self::focus_with_id(self.id.clone())
     }
 
@@ -390,8 +393,12 @@ impl Terminal {
     pub fn update(&mut self, message: MessageWrapper) -> Action {
         match message.0 {
             Message::Resize(size) => {
-                self.term.resize(size.clone());
-                Action::Resize(size)
+                if self.term.get_size() != size {
+                    self.term.resize(size.clone());
+                    Action::Resize(size)
+                } else {
+                    Action::None
+                }
             }
             Message::KeyPress {
                 modified_key,
@@ -489,6 +496,7 @@ impl Terminal {
                 self.context_menu_position = None;
                 self.paste()
             }
+            Message::IdChanged => Action::IdChanged,
         }
     }
 
@@ -1011,6 +1019,9 @@ struct State<R: iced::advanced::text::Renderer> {
     last_cursor_blink: Instant,
     cursor_blink_currently_shown: bool,
     now: Instant,
+    last_widget_width: f32,
+    last_widget_height: f32,
+    last_id: Option<Id>,
 }
 
 struct ParagraphRow<R: iced::advanced::text::Renderer> {
@@ -1030,12 +1041,14 @@ where
     }
 
     fn focus(&mut self) {
+        println!("focusing");
         self.focused = true;
         self.last_cursor_blink = Instant::now();
         self.cursor_blink_currently_shown = true;
     }
 
     fn unfocus(&mut self) {
+        println!("unfocusing");
         self.focused = false;
         self.cursor_blink_currently_shown = false;
     }
@@ -1059,33 +1072,56 @@ where
     ) -> iced::advanced::graphics::core::event::Status {
         match event {
             iced::Event::Window(iced::window::Event::RedrawRequested(now)) => {
+                let state = tree.state.downcast_mut::<State<Renderer>>();
+
                 let term = &self.term.term;
                 let screen = term.screen();
 
                 let widget_width = layout.bounds().width - self.term.padding.horizontal();
                 let widget_height = layout.bounds().height - self.term.padding.vertical();
-                let line_height = renderer.default_size().0;
-                let char_width = line_height * CHAR_WIDTH;
 
-                let target_line_count = (0.77 * widget_height / line_height) as usize;
-                let target_col_count = (widget_width / char_width) as usize;
+                // check if id has changed
+                let id_changed = state
+                    .last_id
+                    .as_ref()
+                    .map(|last_id| last_id != self.id)
+                    .unwrap_or(true);
 
-                if screen.physical_rows != target_line_count
-                    || screen.physical_cols != target_col_count
+                if id_changed {
+                    println!("ID changed!");
+                    state.last_id = Some(self.id.clone());
+                    shell.publish(Message::IdChanged);
+                }
+
+                // check if widget size has changed
+                if state.last_widget_width != widget_width
+                    || state.last_widget_height != widget_height
+                    || id_changed
                 {
-                    let size = TerminalSize {
-                        rows: target_line_count,
-                        cols: target_col_count,
-                        pixel_height: widget_height as usize,
-                        pixel_width: widget_width as usize,
-                        ..Default::default()
-                    };
-                    shell.publish(Message::Resize(size));
+                    state.last_widget_width = widget_width;
+                    state.last_widget_height = widget_height;
+
+                    let line_height = renderer.default_size().0;
+                    let char_width = line_height * CHAR_WIDTH;
+
+                    let target_line_count = (0.77 * widget_height / line_height) as usize;
+                    let target_col_count = (widget_width / char_width) as usize;
+
+                    if screen.physical_rows != target_line_count
+                        || screen.physical_cols != target_col_count
+                    {
+                        let size = TerminalSize {
+                            rows: target_line_count,
+                            cols: target_col_count,
+                            pixel_height: widget_height as usize,
+                            pixel_width: widget_width as usize,
+                            ..Default::default()
+                        };
+                        shell.publish(Message::Resize(size));
+                    }
                 }
 
                 // handle blinking cursor
-                let state = tree.state.downcast_mut::<State<Renderer>>();
-
                 if state.is_focused() {
                     state.now = *now;
                     let millis_until_redraw = CURSOR_BLINK_INTERVAL_MILLIS
@@ -1255,6 +1291,7 @@ where
     }
 
     fn state(&self) -> iced::advanced::widget::tree::State {
+        println!("State created! {:?}", self.id);
         iced::advanced::widget::tree::State::new(State::<Renderer> {
             focused: false,
             rows: VecDeque::new(),
@@ -1262,6 +1299,10 @@ where
             last_cursor_blink: Instant::now(),
             cursor_blink_currently_shown: false,
             now: Instant::now(),
+            // needs to be none to detect newly created widgets
+            last_id: None,
+            last_widget_height: 0.0,
+            last_widget_width: 0.0,
         })
     }
 
@@ -1278,6 +1319,7 @@ where
     ) {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
+        println!("operation {:?}", self.id);
         #[cfg(feature = "iced-master")]
         operation.focusable(Some(&self.id.0), _layout.bounds(), state);
         #[cfg(feature = "iced-013")]

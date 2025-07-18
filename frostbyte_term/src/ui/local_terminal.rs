@@ -17,6 +17,7 @@ pub enum Message {
 
 pub enum Action {
     Run(Task<Message>),
+    IdChanged,
     Close,
     None,
 }
@@ -86,6 +87,7 @@ impl LocalTerminal {
                 match action {
                     frozen_term::Action::None => Action::None,
                     frozen_term::Action::Run(task) => Action::Run(task.map(Message::Terminal)),
+                    frozen_term::Action::IdChanged => Action::IdChanged,
                     frozen_term::Action::Input(input) => {
                         if let State::Active(pty) = &self.state {
                             pty.try_write(input).unwrap();

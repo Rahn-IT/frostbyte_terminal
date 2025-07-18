@@ -162,6 +162,7 @@ impl UI {
                     local_terminal::Action::Run(task) => {
                         task.map(move |message| Message::LocalTerminal { id, message })
                     }
+                    local_terminal::Action::IdChanged => self.focus_tab(),
                     local_terminal::Action::None => Task::none(),
                 }
             }
@@ -170,13 +171,7 @@ impl UI {
                 self.switch_tab(id);
                 Task::none()
             }
-            Message::FocusTab => {
-                if let Some(term) = self.terminals.get(&self.selected_tab) {
-                    term.focus().chain(Task::done(Message::Redraw))
-                } else {
-                    Task::none()
-                }
-            }
+            Message::FocusTab => Task::none(),
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey => {
                 return if self.window_id.is_some() {
@@ -308,6 +303,14 @@ impl UI {
         terminal_task.map(move |message| Message::LocalTerminal { id, message })
     }
 
+    fn focus_tab(&self) -> Task<Message> {
+        if let Some(term) = self.terminals.get(&self.selected_tab) {
+            term.focus().chain(Task::done(Message::Redraw))
+        } else {
+            Task::none()
+        }
+    }
+
     fn close_tab(&mut self, id: u32) -> Task<Message> {
         self.terminals.remove(&id);
 
@@ -336,7 +339,7 @@ impl UI {
             .key(self.selected_tab)
             .on_show(|_| Message::FocusTab)
             // need to defer one frame so the state exists before focusing
-            .delay(Duration::from_millis(17))
+            .delay(Duration::from_millis(18))
             .into(),
             None => text("terminal closed").into(),
         };
