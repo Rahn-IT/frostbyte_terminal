@@ -9,6 +9,7 @@ use iced::advanced::text::Paragraph;
 use iced::mouse::ScrollDelta;
 #[cfg(feature = "iced-013")]
 use iced_013::{self as iced};
+use iced_master::advanced::widget::operation::Focusable;
 #[cfg(feature = "iced-master")]
 use iced_master::{self as iced};
 
@@ -499,21 +500,19 @@ impl Terminal {
 
     fn copy(&self) -> Action {
         if let Some(selected_text) = self.get_selected_text() {
-            return Action::Run(iced::Task::batch([
-                iced::clipboard::write(selected_text),
-                self.focus(),
-            ]));
+            Action::Run(iced::clipboard::write(selected_text).chain(self.focus()))
+        } else {
+            Action::None
         }
-        Action::None
     }
 
     fn paste(&self) -> Action {
-        Action::Run(iced::Task::batch([
+        Action::Run(
             iced::clipboard::read()
                 .map(Message::Paste)
-                .map(MessageWrapper),
-            self.focus(),
-        ]))
+                .map(MessageWrapper)
+                .chain(self.focus()),
+        )
     }
 
     fn pos_conversion(&self, position: GridPosition) -> SelectionPosition {
@@ -935,14 +934,9 @@ where
     ) where
         Renderer: iced::advanced::text::Renderer,
     {
-        let is_cursor_visible = self.term.cursor_pos.visibility == CursorVisibility::Visible
-            && ((state.now - state.last_cursor_event).as_millis() < CURSOR_BLINK_INTERVAL_MILLIS
-                || ((state.now - state.last_cursor_blink).as_millis()
-                    / CURSOR_BLINK_INTERVAL_MILLIS)
-                    % 2
-                    == 0);
-
-        if !is_cursor_visible {
+        if !state.cursor_blink_currently_shown
+            || self.term.cursor_pos.visibility == CursorVisibility::Hidden
+        {
             return;
         }
 
@@ -1015,7 +1009,7 @@ struct State<R: iced::advanced::text::Renderer> {
     first_row_scrollback_pos: usize,
     rows: VecDeque<ParagraphRow<R>>,
     last_cursor_blink: Instant,
-    last_cursor_event: Instant,
+    cursor_blink_currently_shown: bool,
     now: Instant,
 }
 
@@ -1025,7 +1019,7 @@ struct ParagraphRow<R: iced::advanced::text::Renderer> {
 }
 
 const CHAR_WIDTH: f32 = 0.6;
-const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 250;
+const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 500;
 
 impl<Renderer> iced::advanced::widget::operation::Focusable for State<Renderer>
 where
@@ -1037,10 +1031,13 @@ where
 
     fn focus(&mut self) {
         self.focused = true;
+        self.last_cursor_blink = Instant::now();
+        self.cursor_blink_currently_shown = true;
     }
 
     fn unfocus(&mut self) {
         self.focused = false;
+        self.cursor_blink_currently_shown = false;
     }
 }
 
@@ -1088,20 +1085,31 @@ where
 
                 // handle blinking cursor
                 let state = tree.state.downcast_mut::<State<Renderer>>();
-                if state.focused {
+
+                if state.is_focused() {
                     state.now = *now;
                     let millis_until_redraw = CURSOR_BLINK_INTERVAL_MILLIS
-                        - (*now - state.last_cursor_blink).as_millis()
-                            % CURSOR_BLINK_INTERVAL_MILLIS;
+                        .saturating_sub((*now - state.last_cursor_blink).as_millis());
+
+                    if millis_until_redraw == 0 {
+                        state.cursor_blink_currently_shown = !state.cursor_blink_currently_shown;
+                        state.last_cursor_blink = *now;
+                    }
 
                     #[cfg(feature = "iced-master")]
-                    shell.request_redraw_at(iced::window::RedrawRequest::At(
+                    shell.request_redraw_at(
                         *now + Duration::from_millis(millis_until_redraw as u64),
-                    ));
+                    );
                     #[cfg(feature = "iced-013")]
                     shell.request_redraw(iced::window::RedrawRequest::At(
                         *now + Duration::from_millis(millis_until_redraw as u64),
                     ));
+                } else if state.cursor_blink_currently_shown == true {
+                    state.cursor_blink_currently_shown = false;
+                    #[cfg(feature = "iced-master")]
+                    shell.request_redraw();
+                    #[cfg(feature = "iced-013")]
+                    shell.request_redraw(iced::window::RedrawRequest::NextFrame);
                 }
 
                 iced::advanced::graphics::core::event::Status::Ignored
@@ -1113,12 +1121,10 @@ where
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonPressed(button)) => {
                 let state = tree.state.downcast_mut::<State<Renderer>>();
-                let focused = cursor.position_over(layout.bounds()).is_some();
+                let newly_focused = cursor.position_over(layout.bounds()).is_some();
 
-                state.focused = focused;
-
-                if focused {
-                    state.last_cursor_event = Instant::now();
+                if newly_focused {
+                    state.focus();
 
                     // Handle text selection start
                     if *button == iced::mouse::Button::Left {
@@ -1153,6 +1159,7 @@ where
 
                     iced::advanced::graphics::core::event::Status::Captured
                 } else {
+                    state.unfocus();
                     iced::advanced::graphics::core::event::Status::Ignored
                 }
             }
@@ -1185,14 +1192,13 @@ where
             }
             iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
                 let state = tree.state.downcast_mut::<State<Renderer>>();
-                let focused = cursor.position_over(layout.bounds()).is_some();
+                let newly_focused = cursor.position_over(layout.bounds()).is_some();
 
-                state.focused = focused;
-
-                if focused {
-                    state.last_cursor_event = Instant::now();
+                if newly_focused {
+                    state.focus();
                     iced::advanced::graphics::core::event::Status::Captured
                 } else {
+                    state.unfocus();
                     iced::advanced::graphics::core::event::Status::Ignored
                 }
             }
@@ -1203,14 +1209,15 @@ where
             }) => {
                 let state = tree.state.downcast_mut::<State<Renderer>>();
 
-                if state.focused {
+                if state.is_focused() {
                     if let Some(filter) = &self.term.key_filter {
                         if filter(&modified_key, &modifiers) {
                             return iced::advanced::graphics::core::event::Status::Ignored;
                         }
                     }
 
-                    state.last_cursor_event = Instant::now();
+                    state.last_cursor_blink = Instant::now();
+                    state.cursor_blink_currently_shown = true;
 
                     let message = Message::KeyPress {
                         modified_key: modified_key.clone(),
@@ -1222,6 +1229,15 @@ where
                 } else {
                     iced::advanced::graphics::core::event::Status::Ignored
                 }
+            }
+            iced::Event::Window(iced::window::Event::Focused) => {
+                let state = tree.state.downcast_mut::<State<Renderer>>();
+                state.focus();
+                #[cfg(feature = "iced-master")]
+                shell.request_redraw();
+                #[cfg(feature = "iced-013")]
+                shell.request_redraw(iced::window::RedrawRequest::NextFrame);
+                iced::advanced::graphics::core::event::Status::Ignored
             }
             _ => iced::advanced::graphics::core::event::Status::Ignored,
         }
@@ -1244,7 +1260,7 @@ where
             rows: VecDeque::new(),
             first_row_scrollback_pos: 0,
             last_cursor_blink: Instant::now(),
-            last_cursor_event: Instant::now(),
+            cursor_blink_currently_shown: false,
             now: Instant::now(),
         })
     }

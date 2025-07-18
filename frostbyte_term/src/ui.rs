@@ -19,7 +19,7 @@ use iced::{
     futures::SinkExt,
     keyboard,
     stream::channel,
-    widget::{button, center, column, row, text},
+    widget::{button, center, column, pop, row, text},
     window,
 };
 #[cfg(target_os = "linux")]
@@ -41,14 +41,15 @@ pub enum Message {
     },
     OpenTab,
     SwitchTab(u32),
-    FocusTab(u32),
+    FocusTab,
     CloseTab(u32),
     Hotkey,
     WindowOpened(window::Id),
     CloseWindow,
     WindowClosed,
     Shutdown,
-    Dummy,
+    // This does nothing as is only here to trigger a redraw
+    Redraw,
 }
 
 enum Mode {
@@ -167,14 +168,11 @@ impl UI {
                 }
             }
             Message::OpenTab => self.open_tab(),
-            Message::SwitchTab(id) => self.switch_tab(id),
-            Message::FocusTab(id) => {
-                if let Some(term) = self.terminals.get(&id) {
-                    term.focus()
-                } else {
-                    Task::none()
-                }
+            Message::SwitchTab(id) => {
+                self.switch_tab(id);
+                Task::none()
             }
+            Message::FocusTab => self.focus_tab(),
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey => {
                 return if self.window_id.is_some() {
@@ -196,7 +194,7 @@ impl UI {
                 Task::none()
             }
             Message::Shutdown => iced::exit(),
-            Message::Dummy => Task::none(),
+            Message::Redraw => Task::none(),
             #[cfg(target_os = "linux")]
             Message::AnchorChange { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
@@ -225,6 +223,7 @@ impl UI {
             Message::ExclusiveZoneChange { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
             Message::NewInputPanel { .. } => unreachable!(),
+            Message::NewBaseWindow { .. } => unreachable!(),
         }
     }
 
@@ -273,9 +272,9 @@ impl UI {
             };
 
             if self.terminals.is_empty() {
-                Task::batch([self.open_tab(), task])
+                task.chain(self.open_tab())
             } else {
-                task
+                task.chain(self.focus_tab())
             }
         }
     }
@@ -300,17 +299,15 @@ impl UI {
         self.terminals.insert(id, local_terminal);
         self.selected_tab = id;
 
-        Task::batch([
-            terminal_task.map(move |message| Message::LocalTerminal { id, message }),
-            self.focus_tab(id),
-        ])
+        terminal_task.map(move |message| Message::LocalTerminal { id, message })
     }
 
-    fn focus_tab(&self, id: u32) -> Task<Message> {
-        Task::future(async move {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            Message::FocusTab(id)
-        })
+    fn focus_tab(&self) -> Task<Message> {
+        if let Some(term) = self.terminals.get(&self.selected_tab) {
+            term.focus().chain(Task::done(Message::Redraw))
+        } else {
+            Task::none()
+        }
     }
 
     fn close_tab(&mut self, id: u32) -> Task<Message> {
@@ -318,30 +315,31 @@ impl UI {
 
         if let Some((id, _term)) = self.terminals.iter().next() {
             self.selected_tab = *id;
-            self.focus_tab(*id)
+            Task::none()
         } else {
             self.close_window()
         }
     }
 
-    fn switch_tab(&mut self, id: u32) -> Task<Message> {
+    fn switch_tab(&mut self, id: u32) {
         if let Some(_terminal) = self.terminals.get(&id) {
             self.selected_tab = id;
-            self.focus_tab(id)
-        } else {
-            Task::none()
         }
     }
 
     pub fn view<'a>(&'a self, _id: window::Id) -> Element<'a, Message> {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
-        let tab_view = match selected_terminal {
-            Some(terminal) => terminal.view(),
+        let tab_view: Element<Message> = match selected_terminal {
+            Some(terminal) => pop(terminal.view().map(move |message| Message::LocalTerminal {
+                id: self.selected_tab,
+                message,
+            }))
+            .key(self.selected_tab)
+            .on_show(|_| Message::FocusTab)
+            .into(),
             None => text("terminal closed").into(),
         };
-
-        let current_id = self.selected_tab;
 
         let tab_bar = row(self.terminals.iter().map(|(id, terminal)| {
             let style = if id == &self.selected_tab {
@@ -365,12 +363,7 @@ impl UI {
         .spacing(5);
 
         column![
-            tab_view.map(move |message| {
-                Message::LocalTerminal {
-                    id: current_id,
-                    message,
-                }
-            }),
+            tab_view,
             tab_bar
                 .push(
                     button(center(text("New Tab")))
@@ -456,15 +449,6 @@ fn poll_events_sub() -> impl Stream<Item = Message> {
                 if event.state() == HotKeyState::Pressed {
                     if let Err(err) = sender.send(Message::Hotkey).await {
                         eprintln!("Error sending hotkey message: {}", err);
-                    }
-                } else {
-                    // So why would you send a dummy message here? That's obviously stupid.
-                    // Well - if I don't the window doesn't open in layershell mode.
-                    // It almost seems like the event loop hangs.
-                    // I can't unhang it with a timed message, but sending one on key release works.
-                    // Just please don't ask me why - I have no idea
-                    if let Err(err) = sender.send(Message::Dummy).await {
-                        eprintln!("Error sending dummy message: {}", err);
                     }
                 }
             }
