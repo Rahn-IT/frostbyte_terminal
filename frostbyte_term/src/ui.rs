@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug, time::Duration};
+use std::{collections::BTreeMap, fmt::Debug};
 
 #[cfg(target_os = "linux")]
 use std::{
@@ -17,7 +17,7 @@ use iced::{
     futures::SinkExt,
     keyboard,
     stream::channel,
-    widget::{button, center, column, pop, row, text},
+    widget::{button, center, column, row, text},
     window,
 };
 #[cfg(target_os = "linux")]
@@ -39,7 +39,6 @@ pub enum Message {
     },
     OpenTab,
     SwitchTab(u32),
-    FocusTab,
     CloseTab(u32),
     Hotkey,
     WindowOpened(window::Id),
@@ -171,7 +170,6 @@ impl UI {
                 self.switch_tab(id);
                 Task::none()
             }
-            Message::FocusTab => Task::none(),
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey => {
                 return if self.window_id.is_some() {
@@ -305,6 +303,7 @@ impl UI {
 
     fn focus_tab(&self) -> Task<Message> {
         if let Some(term) = self.terminals.get(&self.selected_tab) {
+            // the chained redraw message is required for the layer shell implementation
             term.focus().chain(Task::done(Message::Redraw))
         } else {
             Task::none()
@@ -332,15 +331,13 @@ impl UI {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
         let tab_view: Element<Message> = match selected_terminal {
-            Some(terminal) => pop(terminal.view().map(move |message| Message::LocalTerminal {
-                id: self.selected_tab,
-                message,
-            }))
-            .key(self.selected_tab)
-            .on_show(|_| Message::FocusTab)
-            // need to defer one frame so the state exists before focusing
-            .delay(Duration::from_millis(18))
-            .into(),
+            Some(terminal) => terminal
+                .view()
+                .map(move |message| Message::LocalTerminal {
+                    id: self.selected_tab,
+                    message,
+                })
+                .into(),
             None => text("terminal closed").into(),
         };
 

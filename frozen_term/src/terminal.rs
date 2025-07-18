@@ -310,7 +310,6 @@ impl Terminal {
     where
         T: Send + 'static,
     {
-        println!("focus task {:?}:", self.id);
         Self::focus_with_id(self.id.clone())
     }
 
@@ -1041,14 +1040,12 @@ where
     }
 
     fn focus(&mut self) {
-        println!("focusing");
         self.focused = true;
         self.last_cursor_blink = Instant::now();
         self.cursor_blink_currently_shown = true;
     }
 
     fn unfocus(&mut self) {
-        println!("unfocusing");
         self.focused = false;
         self.cursor_blink_currently_shown = false;
     }
@@ -1088,7 +1085,6 @@ where
                     .unwrap_or(true);
 
                 if id_changed {
-                    println!("ID changed!");
                     state.last_id = Some(self.id.clone());
                     shell.publish(Message::IdChanged);
                 }
@@ -1291,7 +1287,6 @@ where
     }
 
     fn state(&self) -> iced::advanced::widget::tree::State {
-        println!("State created! {:?}", self.id);
         iced::advanced::widget::tree::State::new(State::<Renderer> {
             focused: false,
             rows: VecDeque::new(),
@@ -1319,7 +1314,6 @@ where
     ) {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
-        println!("operation {:?}", self.id);
         #[cfg(feature = "iced-master")]
         operation.focusable(Some(&self.id.0), _layout.bounds(), state);
         #[cfg(feature = "iced-013")]
