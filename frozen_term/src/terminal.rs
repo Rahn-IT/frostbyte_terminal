@@ -163,7 +163,7 @@ pub struct Terminal {
     first_row_scrollback_pos: usize,
     last_span_update: SequenceNo,
     last_span_update_scroll_pos: usize,
-    id: Option<Id>,
+    id: Id,
     key_filter: Option<Box<dyn Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool>>,
     // here to abort the task on drop
     _handle: iced::task::Handle,
@@ -262,7 +262,7 @@ impl Terminal {
                 first_row_scrollback_pos: 0,
                 last_span_update: 0,
                 last_span_update_scroll_pos: 0,
-                id: None,
+                id: Id(iced::advanced::widget::Id::unique()),
                 _handle: handle,
                 key_filter: None,
                 font: iced::Font::MONOSPACE,
@@ -280,12 +280,8 @@ impl Terminal {
     }
 
     pub fn id(mut self, id: impl Into<Id>) -> Self {
-        self.id = Some(id.into());
+        self.id = id.into();
         self
-    }
-
-    pub fn random_id(self) -> Self {
-        self.id(Id(iced::advanced::widget::Id::unique()))
     }
 
     pub fn padding(mut self, padding: impl Into<iced::Padding>) -> Self {
@@ -312,18 +308,16 @@ impl Terminal {
     where
         T: Send + 'static,
     {
-        if let Some(id) = &self.id {
-            Self::focus_with_id(id.clone())
-        } else {
-            iced::Task::none()
-        }
+        Self::focus_with_id(self.id.clone())
     }
 
-    pub fn focus_with_id<T>(id: Id) -> iced::Task<T>
+    pub fn focus_with_id<T>(id: impl Into<Id>) -> iced::Task<T>
     where
         T: Send + 'static,
     {
-        iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::focus(id.0))
+        iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::focus(
+            id.into().0,
+        ))
     }
 
     pub fn get_title(&self) -> &str {
@@ -657,8 +651,7 @@ impl Terminal {
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
-        let terminal_widget =
-            iced::Element::new(TerminalWidget::new(self, self.font).id_maybe(self.id.clone()));
+        let terminal_widget = iced::Element::new(TerminalWidget::new(self, self.font, &self.id));
 
         if let Some(position) = self.context_menu_position {
             let copy_button = iced::widget::button(iced::widget::text("Copy").size(14))
@@ -874,7 +867,7 @@ impl From<String> for Id {
 }
 
 struct TerminalWidget<'a, R: iced::advanced::text::Renderer> {
-    id: Option<Id>,
+    id: &'a Id,
     term: &'a Terminal,
     font: R::Font,
 }
@@ -883,17 +876,12 @@ impl<'a, R> TerminalWidget<'a, R>
 where
     R: iced::advanced::text::Renderer,
 {
-    pub fn new(term: &'a Terminal, font: impl Into<R::Font>) -> Self {
+    pub fn new(term: &'a Terminal, font: impl Into<R::Font>, id: &'a Id) -> Self {
         Self {
-            id: None,
+            id,
             term,
             font: font.into(),
         }
-    }
-
-    pub fn id_maybe(mut self, id: Option<Id>) -> Self {
-        self.id = id;
-        self
     }
 
     fn screen_to_grid_position<Renderer>(
@@ -1291,9 +1279,9 @@ where
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
         #[cfg(feature = "iced-master")]
-        operation.focusable(self.id.as_ref().map(|id| &id.0), _layout.bounds(), state);
+        operation.focusable(Some(&self.id.0), _layout.bounds(), state);
         #[cfg(feature = "iced-013")]
-        operation.focusable(state, self.id.as_ref().map(|id| &id.0));
+        operation.focusable(state, Some(&self.id.0));
     }
 
     fn layout(

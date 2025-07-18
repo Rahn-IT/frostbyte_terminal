@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{collections::BTreeMap, fmt::Debug, time::Duration};
 
 #[cfg(target_os = "linux")]
 use std::{
@@ -335,6 +335,8 @@ impl UI {
             }))
             .key(self.selected_tab)
             .on_show(|_| Message::FocusTab)
+            // need to defer one frame so the state exists before focusing
+            .delay(Duration::from_millis(17))
             .into(),
             None => text("terminal closed").into(),
         };

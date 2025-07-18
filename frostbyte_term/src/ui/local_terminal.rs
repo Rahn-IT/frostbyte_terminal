@@ -39,7 +39,7 @@ impl LocalTerminal {
     ) -> (Self, Task<Message>) {
         let size = async_pty::TerminalSize { cols: 80, rows: 24 };
         let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
-        let mut display = display.random_id().key_filter(key_filter);
+        let mut display = display.key_filter(key_filter);
 
         if let Some(font) = font {
             display = display.font(font);
