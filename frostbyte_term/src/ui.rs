@@ -5,7 +5,6 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Duration,
 };
 
 #[cfg(target_os = "linux")]
@@ -172,7 +171,13 @@ impl UI {
                 self.switch_tab(id);
                 Task::none()
             }
-            Message::FocusTab => self.focus_tab(),
+            Message::FocusTab => {
+                if let Some(term) = self.terminals.get(&self.selected_tab) {
+                    term.focus().chain(Task::done(Message::Redraw))
+                } else {
+                    Task::none()
+                }
+            }
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey => {
                 return if self.window_id.is_some() {
@@ -194,6 +199,7 @@ impl UI {
                 Task::none()
             }
             Message::Shutdown => iced::exit(),
+            // only here to trigger a redraw
             Message::Redraw => Task::none(),
             #[cfg(target_os = "linux")]
             Message::AnchorChange { .. } => unreachable!(),
@@ -272,9 +278,9 @@ impl UI {
             };
 
             if self.terminals.is_empty() {
-                task.chain(self.open_tab())
+                Task::batch([task, self.open_tab()])
             } else {
-                task.chain(self.focus_tab())
+                task
             }
         }
     }
@@ -300,14 +306,6 @@ impl UI {
         self.selected_tab = id;
 
         terminal_task.map(move |message| Message::LocalTerminal { id, message })
-    }
-
-    fn focus_tab(&self) -> Task<Message> {
-        if let Some(term) = self.terminals.get(&self.selected_tab) {
-            term.focus().chain(Task::done(Message::Redraw))
-        } else {
-            Task::none()
-        }
     }
 
     fn close_tab(&mut self, id: u32) -> Task<Message> {
