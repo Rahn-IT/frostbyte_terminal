@@ -18,7 +18,7 @@ image = { version = "0.25.6", default-features = false, features = ["png"] }
 signal-hook = "0.3.18"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-iced_layershell = { git = "https://github.com/waycrate/exwlshelleventloop.git" }
+iced_layershell = { git = "https://github.com/acul009/exwlshelleventloop.git" }
 gtk = "0.18.2"
 
 
