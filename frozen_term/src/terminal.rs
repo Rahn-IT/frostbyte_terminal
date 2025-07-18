@@ -644,6 +644,19 @@ impl Terminal {
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
+        self.view_internal().map(MessageWrapper)
+    }
+
+    fn view_internal<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, Message, Theme, Renderer>
+    where
+        Renderer: iced::advanced::text::Renderer<Font = iced::Font> + 'static,
+        Theme: iced::widget::text::Catalog + 'static,
+        Theme: iced::widget::container::Catalog + iced::widget::button::Catalog,
+        <Theme as iced::widget::text::Catalog>::Class<'static>:
+            From<iced::widget::text::StyleFn<'static, Theme>>,
+        <Theme as iced::widget::container::Catalog>::Class<'static>:
+            From<iced::widget::container::StyleFn<'static, Theme>>,
+    {
         let terminal_widget =
             iced::Element::new(TerminalWidget::new(self, self.font).id_maybe(self.id.clone()));
 
@@ -689,9 +702,8 @@ impl Terminal {
 
             iced::widget::stack![terminal_widget, positioned_container].into()
         } else {
-            terminal_widget
+            iced::widget::stack![terminal_widget].into()
         }
-        .map(MessageWrapper)
     }
 
     fn push_span(
