@@ -21,7 +21,7 @@ as I've stolen all the ANSI and text grid functionality from them.
 
 This is still really basic. If you have requests for the widget or application, feel free to open an issue.
 
-- Builtin nerd font, no more installing additinoal fonts for oh-my-posh or oh-my-zsh
+- Builtin nerd font, no more installing additional fonts for oh-my-posh or oh-my-zsh
 - Dropdown Terminal via Hotkey (F12 on Linux, Alt + F12 on Windows) or via SIGUSR1
 - Wayland support through iced_layershell (still a bit unstable)
 - Multiple Tabs
