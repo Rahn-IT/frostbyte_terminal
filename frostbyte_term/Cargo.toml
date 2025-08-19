@@ -12,8 +12,8 @@ sipper = { workspace = true }
 async_pty = { path = "../async_pty" }
 # iced_aw = { version = "0.12.2", features = ["tab_bar", "tabs"] }
 global-hotkey = "0.7.0"
-tray-icon = "0.21.0"
-tokio = "1.46.1"
+tray-icon = "0.21.1"
+tokio = "1.47.1"
 image = { version = "0.25.6", default-features = false, features = ["png"] }
 signal-hook = "0.3.18"
 

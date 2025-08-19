@@ -5,10 +5,10 @@ resolver = "2"
 members = ["async_pty", "frozen_term", "frostbyte_term"]
 
 [workspace.dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 sipper = "0.1.0"
-thiserror = "2.0.12"
-tokio-util = { version = "0.7.15", features = ["rt"] }
+thiserror = "2.0.15"
+tokio-util = { version = "0.7.16", features = ["rt"] }
 
 [patch."https://github.com/iced-rs/iced.git"]
 iced = { git = "https://github.com/acul009/iced.git" }
