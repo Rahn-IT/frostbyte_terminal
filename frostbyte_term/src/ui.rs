@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Debug};
 
 #[cfg(target_os = "linux")]
-use std::{
+use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
