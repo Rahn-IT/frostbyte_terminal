@@ -25,8 +25,13 @@ First, add `frozen_term` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-frozen_term = "0.4.0"
+frozen_term = { git = "https://github.com/rahn-it/frostbyte_terminal.git", features = [
+    "iced-master",
+] }
+iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
 ```
+
+
 
 ### Creating a Terminal Widget
 
