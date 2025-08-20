@@ -1721,10 +1721,12 @@ dependencies = [
 
 [[package]]
 name = "frozen_term"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
+ "async_pty",
  "iced 0.13.1",
  "iced 0.14.0-dev",
+ "sipper",
  "termwiz",
  "thiserror 2.0.15",
  "tokio",
@@ -3254,6 +3256,14 @@ name = "litrs"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5e54036fe321fd421e10d732f155734c4e4afd610dd556d9a82833ab3ee0bed"
+
+[[package]]
+name = "local_terminal"
+version = "0.1.0"
+dependencies = [
+ "frozen_term",
+ "iced 0.14.0-dev",
+]
 
 [[package]]
 name = "lock_api"

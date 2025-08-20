@@ -11,6 +11,7 @@ use signal_hook::consts::signal::SIGUSR1;
 #[cfg(target_os = "linux")]
 use signal_hook::flag as signal_flag;
 
+use frozen_term::local_terminal::{self, LocalTerminal};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
     Element, Font, Length, Subscription, Task,
@@ -23,11 +24,8 @@ use iced::{
 #[cfg(target_os = "linux")]
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
 use image::GenericImageView;
-use local_terminal::LocalTerminal;
 use sipper::Stream;
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder};
-
-mod local_terminal;
 
 /// Messages emitted by the application and its widgets.
 #[cfg_attr(target_os = "linux", iced_layershell::to_layer_message(multi))]
@@ -288,10 +286,10 @@ impl UI {
     }
 
     fn open_tab(&mut self) -> Task<Message> {
-        let (local_terminal, terminal_task) = LocalTerminal::start(
-            Some(Font::with_name("RobotoMono Nerd Font")),
-            self.hotkey.filter(),
-        );
+        let style = frozen_term::Style::default().font(Font::with_name("RobotoMono Nerd Font"));
+
+        let (mut local_terminal, terminal_task) = LocalTerminal::start(self.hotkey.filter());
+        local_terminal.set_style(style);
         let id = self.new_terminal_id;
         self.new_terminal_id += 1;
 

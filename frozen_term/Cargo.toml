@@ -1,6 +1,6 @@
 [package]
 name = "frozen_term"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 license = "MIT"
 description = "A terminal emulator to embed into your iced application - includes demo app"
@@ -19,7 +19,10 @@ iced_013 = { package = "iced", version = "0.13.1", optional = true, features = [
     "advanced",
     "tokio",
 ] }
+async_pty = { path = "../async_pty", optional = true }
+sipper = { workspace = true, optional = true }
 
 [features]
 iced-master = ["iced_master"]
 iced-013 = ["iced_013"]
+local-terminal = ["async_pty", "sipper"]

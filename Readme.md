@@ -6,7 +6,9 @@ Since I had to build a terminal widget for the [rust ui framework iced](https://
 I needed a test application. And after building the terminal itself,
 I just went ahead and kept working on it a bit.
 
-If you want to integrate a terminal into your iced application,
+## Widget
+
+If you want to integrate a terminal into your iced application or build your own terminal,
 take a look at [the frozen_term widget](frozen_term/Readme.md)
 
 Many thanks also to the developers of [Wezterm](https://github.com/wezterm/wezterm)

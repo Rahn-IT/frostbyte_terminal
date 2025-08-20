@@ -19,6 +19,13 @@ It is similar to `iced_term`, but has a few key differences:
 
 ## Usage
 
+### Local terminal
+
+`frozen_term` now also supports a local terminal directly, without you having to connect your own.
+Just enable the `local-terminal` feature.
+
+You can find a single windows minimal terminal in the examples folder.
+
 ### Basic Setup
 
 First, add `frozen_term` to your `Cargo.toml`:

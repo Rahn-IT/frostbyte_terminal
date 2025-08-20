@@ -4,23 +4,22 @@ use std::{
     time::{Duration, Instant},
 };
 
-use iced::Pixels;
-use iced::advanced::text::Paragraph;
-use iced::mouse::ScrollDelta;
-#[cfg(feature = "iced-013")]
-use iced_013::{self as iced};
-use iced_master::advanced::widget::operation::Focusable;
-#[cfg(feature = "iced-master")]
-use iced_master::{self as iced};
+use crate::iced;
+use crate::iced::{
+    advanced::{text::Paragraph, widget::operation::Focusable},
+    mouse::ScrollDelta,
+};
 
 use termwiz::surface::{CursorShape, CursorVisibility, SequenceNo};
 use tokio::sync::mpsc;
 use wezterm_term::{
-    CellAttributes, CursorPosition, TerminalConfiguration, Underline,
-    color::{ColorAttribute, ColorPalette},
+    CellAttributes, CursorPosition, TerminalConfiguration, Underline, color::ColorPalette,
 };
 
 pub use wezterm_term::TerminalSize;
+
+pub(crate) mod style;
+use style::Style;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct GridPosition {
@@ -128,10 +127,10 @@ impl SelectionState {
 }
 
 #[derive(Debug, Clone)]
-pub struct MessageWrapper(Message);
+pub struct Message(InnerMessage);
 
 #[derive(Debug, Clone)]
-enum Message {
+enum InnerMessage {
     Resize(TerminalSize),
     KeyPress {
         modified_key: iced::keyboard::key::Key,
@@ -152,7 +151,7 @@ enum Message {
 
 pub enum Action {
     None,
-    Run(iced::Task<MessageWrapper>),
+    Run(iced::Task<Message>),
     Resize(TerminalSize),
     Input(Vec<u8>),
     IdChanged,
@@ -169,15 +168,10 @@ pub struct Terminal {
     key_filter: Option<Box<dyn Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool>>,
     // here to abort the task on drop
     _handle: iced::task::Handle,
-    font: iced::Font,
     scroll_pos: usize,
-    padding: iced::Padding,
-    background_color: iced::Color,
-    foreground_color: iced::Color,
     cursor_pos: CursorPosition,
     context_menu_position: Option<iced::Point>,
-    line_height: iced::widget::text::LineHeight,
-    text_size: Option<Pixels>,
+    style: style::Style,
 }
 
 struct FormattedRow {
@@ -222,7 +216,7 @@ impl std::io::Write for BridgedWriter {
 }
 
 impl Terminal {
-    pub fn new(rows: u16, cols: u16) -> (Self, iced::Task<MessageWrapper>) {
+    pub fn new(rows: u16, cols: u16) -> (Self, iced::Task<Message>) {
         let size = TerminalSize {
             rows: rows as usize,
             cols: cols as usize,
@@ -239,19 +233,14 @@ impl Terminal {
             size,
             Arc::new(config),
             "frozen_term",
-            "0.1",
+            env!("CARGO_PKG_VERSION"),
             Box::new(writer),
         );
 
-        let palette = term.palette();
-        let (r, g, b, a) = palette.background.to_tuple_rgba();
-        let background_color = iced::Color::from_rgba(r, g, b, a);
-        let (r, g, b, a) = palette.foreground.to_tuple_rgba();
-        let foreground_color = iced::Color::from_rgba(r, g, b, a);
         let cursor_pos = term.cursor_pos();
 
-        let (task, handle) = iced::Task::run(recv, Message::Input)
-            .map(MessageWrapper)
+        let (task, handle) = iced::Task::run(recv, InnerMessage::Input)
+            .map(Message)
             .abortable();
 
         let handle = handle.abort_on_drop();
@@ -267,15 +256,10 @@ impl Terminal {
                 id: Id(iced::advanced::widget::Id::unique()),
                 _handle: handle,
                 key_filter: None,
-                font: iced::Font::MONOSPACE,
                 scroll_pos: 0,
-                padding: 10.into(),
-                background_color,
-                foreground_color,
                 cursor_pos,
                 context_menu_position: None,
-                line_height: iced::widget::text::LineHeight::default(),
-                text_size: None,
+                style: Style::default(),
             },
             task,
         )
@@ -286,9 +270,13 @@ impl Terminal {
         self
     }
 
-    pub fn padding(mut self, padding: impl Into<iced::Padding>) -> Self {
-        self.padding = padding.into();
+    pub fn style(mut self, style: Style) -> Self {
+        self.set_style(style);
         self
+    }
+
+    pub fn set_style(&mut self, style: Style) {
+        self.style = style;
     }
 
     /// Allows you to add a filter to stop the terminal from capturing keypresses you want to use for your application.
@@ -297,13 +285,15 @@ impl Terminal {
         mut self,
         key_filter: impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
     ) -> Self {
-        self.key_filter = Some(Box::new(key_filter));
+        self.set_key_filter(key_filter);
         self
     }
 
-    pub fn font(mut self, font: impl Into<iced::Font>) -> Self {
-        self.font = font.into();
-        self
+    pub fn set_key_filter(
+        &mut self,
+        key_filter: impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
+    ) {
+        self.key_filter = Some(Box::new(key_filter));
     }
 
     pub fn focus<T>(&self) -> iced::Task<T>
@@ -389,9 +379,9 @@ impl Terminal {
     }
 
     #[must_use]
-    pub fn update(&mut self, message: MessageWrapper) -> Action {
+    pub fn update(&mut self, message: Message) -> Action {
         match message.0 {
-            Message::Resize(size) => {
+            InnerMessage::Resize(size) => {
                 if self.term.get_size() != size {
                     self.term.resize(size.clone());
                     Action::Resize(size)
@@ -399,7 +389,7 @@ impl Terminal {
                     Action::None
                 }
             }
-            Message::KeyPress {
+            InnerMessage::KeyPress {
                 modified_key,
                 modifiers,
             } => {
@@ -425,8 +415,8 @@ impl Terminal {
 
                 Action::None
             }
-            Message::Input(input) => Action::Input(input),
-            Message::Paste(paste) => {
+            InnerMessage::Input(input) => Action::Input(input),
+            InnerMessage::Paste(paste) => {
                 if let Some(paste) = paste {
                     self.term.send_paste(&paste).unwrap();
                     self.scroll_pos = 0;
@@ -434,7 +424,7 @@ impl Terminal {
                 }
                 Action::None
             }
-            Message::Scrolled(scrolled) => {
+            InnerMessage::Scrolled(scrolled) => {
                 match scrolled {
                     ScrollDelta::Lines { y, .. } => {
                         if y >= 0.0 {
@@ -462,40 +452,40 @@ impl Terminal {
 
                 Action::None
             }
-            Message::StartSelection(position) => {
+            InnerMessage::StartSelection(position) => {
                 self.selection_state.start(self.pos_conversion(position));
                 self.update_formatted_rows(true);
                 Action::None
             }
-            Message::MoveSelection(position) => {
+            InnerMessage::MoveSelection(position) => {
                 self.selection_state
                     .move_mouse(self.pos_conversion(position));
                 self.update_formatted_rows(true);
 
                 Action::None
             }
-            Message::EndSelection => {
+            InnerMessage::EndSelection => {
                 self.selection_state.stop();
                 self.update_formatted_rows(true);
                 Action::None
             }
-            Message::ShowContextMenu(position) => {
+            InnerMessage::ShowContextMenu(position) => {
                 self.context_menu_position = Some(position);
                 Action::None
             }
-            Message::HideContextMenu => {
+            InnerMessage::HideContextMenu => {
                 self.context_menu_position = None;
                 Action::None
             }
-            Message::ContextMenuCopy => {
+            InnerMessage::ContextMenuCopy => {
                 self.context_menu_position = None;
                 self.copy()
             }
-            Message::ContextMenuPaste => {
+            InnerMessage::ContextMenuPaste => {
                 self.context_menu_position = None;
                 self.paste()
             }
-            Message::IdChanged => Action::IdChanged,
+            InnerMessage::IdChanged => Action::IdChanged,
         }
     }
 
@@ -510,8 +500,8 @@ impl Terminal {
     fn paste(&self) -> Action {
         Action::Run(
             iced::clipboard::read()
-                .map(Message::Paste)
-                .map(MessageWrapper)
+                .map(InnerMessage::Paste)
+                .map(Message)
                 .chain(self.focus()),
         )
     }
@@ -547,8 +537,6 @@ impl Terminal {
             let visible_range = visible_rows_start..visible_rows_end;
 
             let term_lines = screen.lines_in_phys_range(visible_range);
-
-            let palette = self.term.palette();
 
             self.cursor_pos = self.term.cursor_pos();
 
@@ -597,13 +585,11 @@ impl Terminal {
                         // Check if we need to break the span due to attribute changes or selection changes
                         if cell.attrs() != &current_attrs || is_selected != is_current_selected {
                             Self::push_span(
+                                &self.style,
                                 &mut formatted_row.spans,
                                 current_text,
                                 current_attrs,
-                                &palette,
                                 is_current_selected,
-                                &self.foreground_color,
-                                &self.background_color,
                             );
                             current_attrs = cell.attrs().clone();
                             is_current_selected = is_selected;
@@ -615,13 +601,11 @@ impl Terminal {
                     }
 
                     Self::push_span(
+                        &self.style,
                         &mut formatted_row.spans,
                         current_text,
                         current_attrs,
-                        &palette,
                         is_current_selected,
-                        &self.foreground_color,
-                        &self.background_color,
                     );
 
                     absolute_line += 1;
@@ -635,7 +619,7 @@ impl Terminal {
             || self.scroll_pos != self.last_span_update_scroll_pos
     }
 
-    pub fn view<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, MessageWrapper, Theme, Renderer>
+    pub fn view<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, Message, Theme, Renderer>
     where
         Renderer: iced::advanced::text::Renderer<Font = iced::Font> + 'static,
         Theme: iced::widget::text::Catalog + 'static,
@@ -645,10 +629,12 @@ impl Terminal {
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
-        self.view_internal().map(MessageWrapper)
+        self.view_internal().map(Message)
     }
 
-    fn view_internal<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, Message, Theme, Renderer>
+    fn view_internal<'a, Theme, Renderer>(
+        &'a self,
+    ) -> iced::Element<'a, InnerMessage, Theme, Renderer>
     where
         Renderer: iced::advanced::text::Renderer<Font = iced::Font> + 'static,
         Theme: iced::widget::text::Catalog + 'static,
@@ -658,18 +644,18 @@ impl Terminal {
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
-        let terminal_widget = iced::Element::new(TerminalWidget::new(self, self.font, &self.id));
+        let terminal_widget = iced::Element::new(TerminalWidget::new(self, self.style.font));
 
         if let Some(position) = self.context_menu_position {
             let copy_button = iced::widget::button(iced::widget::text("Copy").size(14))
                 .padding([4, 8])
                 .width(iced::Length::Fill)
-                .on_press(Message::ContextMenuCopy);
+                .on_press(InnerMessage::ContextMenuCopy);
 
             let paste_button = iced::widget::button(iced::widget::text("Paste").size(14))
                 .padding([4, 8])
                 .width(iced::Length::Fill)
-                .on_press(Message::ContextMenuPaste);
+                .on_press(InnerMessage::ContextMenuPaste);
 
             let context_menu = iced::widget::column![copy_button, paste_button].spacing(2);
 
@@ -707,18 +693,14 @@ impl Terminal {
     }
 
     fn push_span(
+        style: &Style,
         formatted_row: &mut Vec<iced::advanced::text::Span<'static, (), iced::Font>>,
         current_text: String,
         attributes: CellAttributes,
-        palette: &ColorPalette,
         is_selected: bool,
-        foreground_color: &iced::Color,
-        background_color: &iced::Color,
     ) {
-        let mut background =
-            get_color(attributes.background(), palette).unwrap_or_else(|| background_color.clone());
-        let mut foreground =
-            get_color(attributes.foreground(), palette).unwrap_or_else(|| foreground_color.clone());
+        let mut background = style.get_background_color(attributes.background());
+        let mut foreground = style.get_foreground_color(attributes.foreground());
 
         if !current_text.is_empty() {
             // Apply reverse colors for original cell attributes
@@ -823,21 +805,6 @@ fn transform_key(
     }
 }
 
-fn get_color(color: ColorAttribute, palette: &ColorPalette) -> Option<iced::Color> {
-    match color {
-        ColorAttribute::TrueColorWithPaletteFallback(srgba_tuple, _)
-        | ColorAttribute::TrueColorWithDefaultFallback(srgba_tuple) => {
-            let (r, g, b, a) = srgba_tuple.to_tuple_rgba();
-            Some(iced::Color::from_rgba(r, g, b, a))
-        }
-        ColorAttribute::PaletteIndex(index) => {
-            let (r, g, b, a) = palette.colors.0[index as usize].to_tuple_rgba();
-            Some(iced::Color::from_rgba(r, g, b, a))
-        }
-        ColorAttribute::Default => None,
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Id(iced::advanced::widget::Id);
 
@@ -874,7 +841,6 @@ impl From<String> for Id {
 }
 
 struct TerminalWidget<'a, R: iced::advanced::text::Renderer> {
-    id: &'a Id,
     term: &'a Terminal,
     font: R::Font,
 }
@@ -883,9 +849,8 @@ impl<'a, R> TerminalWidget<'a, R>
 where
     R: iced::advanced::text::Renderer,
 {
-    pub fn new(term: &'a Terminal, font: impl Into<R::Font>, id: &'a Id) -> Self {
+    pub fn new(term: &'a Terminal, font: impl Into<R::Font>) -> Self {
         Self {
-            id,
             term,
             font: font.into(),
         }
@@ -900,7 +865,8 @@ where
     where
         Renderer: iced::advanced::text::Renderer,
     {
-        let padding_offset = iced::Vector::new(self.term.padding.left, self.term.padding.top);
+        let padding_offset =
+            iced::Vector::new(self.term.style.padding.left, self.term.style.padding.top);
         let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
 
         // Convert screen position to position relative to terminal content
@@ -914,9 +880,10 @@ where
         // Calculate character dimensions
         let text_size = self
             .term
+            .style
             .text_size
             .unwrap_or_else(|| renderer.default_size());
-        let line_height = self.term.line_height.to_absolute(text_size).0;
+        let line_height = self.term.style.line_height.to_absolute(text_size).0;
         let text_size = text_size.0;
         let char_width = text_size * CHAR_WIDTH;
 
@@ -964,10 +931,11 @@ where
         // Calculate character dimensions
         let text_size = self
             .term
+            .style
             .text_size
             .unwrap_or_else(|| renderer.default_size());
 
-        let line_height = self.term.line_height.to_absolute(text_size).0;
+        let line_height = self.term.style.line_height.to_absolute(text_size).0;
         let text_size = text_size.0;
         let char_width = text_size * CHAR_WIDTH;
 
@@ -1064,7 +1032,7 @@ where
         cursor: iced::advanced::mouse::Cursor,
         renderer: &Renderer,
         _clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, Message>,
+        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
         _viewport: &iced::Rectangle,
     ) -> iced::advanced::graphics::core::event::Status {
         match event {
@@ -1074,19 +1042,19 @@ where
                 let term = &self.term.term;
                 let screen = term.screen();
 
-                let widget_width = layout.bounds().width - self.term.padding.horizontal();
-                let widget_height = layout.bounds().height - self.term.padding.vertical();
+                let widget_width = layout.bounds().width - self.term.style.padding.horizontal();
+                let widget_height = layout.bounds().height - self.term.style.padding.vertical();
 
                 // check if id has changed
                 let id_changed = state
                     .last_id
                     .as_ref()
-                    .map(|last_id| last_id != self.id)
+                    .map(|last_id| last_id != &self.term.id)
                     .unwrap_or(true);
 
                 if id_changed {
-                    state.last_id = Some(self.id.clone());
-                    shell.publish(Message::IdChanged);
+                    state.last_id = Some(self.term.id.clone());
+                    shell.publish(InnerMessage::IdChanged);
                 }
 
                 // check if widget size has changed
@@ -1113,7 +1081,7 @@ where
                             pixel_width: widget_width as usize,
                             ..Default::default()
                         };
-                        shell.publish(Message::Resize(size));
+                        shell.publish(InnerMessage::Resize(size));
                     }
                 }
 
@@ -1147,7 +1115,7 @@ where
                 iced::advanced::graphics::core::event::Status::Ignored
             }
             iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => {
-                shell.publish(Message::Scrolled(delta.clone()));
+                shell.publish(InnerMessage::Scrolled(delta.clone()));
 
                 iced::advanced::graphics::core::event::Status::Captured
             }
@@ -1162,14 +1130,14 @@ where
                     if *button == iced::mouse::Button::Left {
                         // Hide context menu if visible
                         if self.term.context_menu_position.is_some() {
-                            shell.publish(Message::HideContextMenu);
+                            shell.publish(InnerMessage::HideContextMenu);
                         }
 
                         if let Some(cursor_position) = cursor.position() {
                             if let Some(char_pos) =
                                 self.screen_to_grid_position(cursor_position, layout, renderer)
                             {
-                                shell.publish(Message::StartSelection(char_pos));
+                                shell.publish(InnerMessage::StartSelection(char_pos));
                                 #[cfg(feature = "iced-master")]
                                 shell.request_redraw();
                                 #[cfg(feature = "iced-013")]
@@ -1181,7 +1149,7 @@ where
                     // Handle right-click for context menu
                     if *button == iced::mouse::Button::Right {
                         if let Some(cursor_position) = cursor.position() {
-                            shell.publish(Message::ShowContextMenu(cursor_position));
+                            shell.publish(InnerMessage::ShowContextMenu(cursor_position));
                             #[cfg(feature = "iced-master")]
                             shell.request_redraw();
                             #[cfg(feature = "iced-013")]
@@ -1204,7 +1172,7 @@ where
                             - self.term.term.get_size().rows
                             - self.term.scroll_pos;
                         if &char_pos.into_selection_position(horizontal_offset) != current {
-                            shell.publish(Message::MoveSelection(char_pos));
+                            shell.publish(InnerMessage::MoveSelection(char_pos));
                         }
                     }
                     iced::advanced::graphics::core::event::Status::Captured
@@ -1215,7 +1183,7 @@ where
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(button)) => {
                 if *button == iced::mouse::Button::Left {
                     if let SelectionState::Selecting { .. } = &self.term.selection_state {
-                        shell.publish(Message::EndSelection);
+                        shell.publish(InnerMessage::EndSelection);
                     }
                     iced::advanced::graphics::core::event::Status::Captured
                 } else {
@@ -1251,7 +1219,7 @@ where
                     state.last_cursor_blink = Instant::now();
                     state.cursor_blink_currently_shown = true;
 
-                    let message = Message::KeyPress {
+                    let message = InnerMessage::KeyPress {
                         modified_key: modified_key.clone(),
                         modifiers: modifiers.clone(),
                     };
@@ -1276,7 +1244,7 @@ where
     }
 }
 
-impl<Theme, Renderer> iced::advanced::widget::Widget<Message, Theme, Renderer>
+impl<Theme, Renderer> iced::advanced::widget::Widget<InnerMessage, Theme, Renderer>
     for TerminalWidget<'_, Renderer>
 where
     Renderer: iced::advanced::text::Renderer<Font = iced::Font>,
@@ -1315,9 +1283,9 @@ where
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
         #[cfg(feature = "iced-master")]
-        operation.focusable(Some(&self.id.0), _layout.bounds(), state);
+        operation.focusable(Some(&self.term.id.0), _layout.bounds(), state);
         #[cfg(feature = "iced-013")]
-        operation.focusable(state, Some(&self.id.0));
+        operation.focusable(state, Some(&self.term.id.0));
     }
 
     fn layout(
@@ -1363,6 +1331,7 @@ where
 
             let text_size = self
                 .term
+                .style
                 .text_size
                 .unwrap_or_else(|| renderer.default_size());
 
@@ -1370,7 +1339,7 @@ where
                 content: formatted_row.spans.as_ref(),
                 bounds: iced::Size::new(
                     limits.max().width,
-                    self.term.line_height.to_absolute(text_size).0,
+                    self.term.style.line_height.to_absolute(text_size).0,
                 ),
                 size: text_size,
                 line_height: iced::advanced::text::LineHeight::default(),
@@ -1402,7 +1371,7 @@ where
         cursor: iced::advanced::mouse::Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, Message>,
+        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
         viewport: &iced::Rectangle,
     ) {
         self.combined_update(
@@ -1419,7 +1388,7 @@ where
         cursor: iced::advanced::mouse::Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, Message>,
+        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
         viewport: &iced::Rectangle,
     ) -> iced::event::Status {
         self.combined_update(
@@ -1442,7 +1411,8 @@ where
         };
 
         let state = tree.state.downcast_ref::<State<Renderer>>();
-        let padding_offset = iced::Vector::new(self.term.padding.left, self.term.padding.top);
+        let padding_offset =
+            iced::Vector::new(self.term.style.padding.left, self.term.style.padding.top);
         let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
 
         // terminal Background
@@ -1451,15 +1421,16 @@ where
                 bounds: layout.bounds(),
                 ..Default::default()
             },
-            self.term.background_color,
+            self.term.style.background_color,
         );
 
         let size = self
             .term
+            .style
             .text_size
             .unwrap_or_else(|| renderer.default_size());
 
-        let y_multiplier = self.term.line_height.to_absolute(size).0;
+        let y_multiplier = self.term.style.line_height.to_absolute(size).0;
 
         // drawing text background
         for (row_index, (paragraph_row, formatted_row)) in state
@@ -1501,7 +1472,7 @@ where
             renderer.fill_paragraph(
                 &paragraph,
                 bounds.position() + padding_offset + iced::Vector::new(0.0, y_offset),
-                self.term.foreground_color,
+                self.term.style.foreground_color,
                 bounds,
             );
         }

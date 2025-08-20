@@ -1,16 +1,22 @@
 use std::sync::Arc;
 
-use async_pty::PtyProcess;
-use iced::{
-    Element, Length, Task,
-    widget::{center, text},
+use crate::{
+    iced::{
+        self, Element, Length, Task,
+        widget::{center, text},
+    },
+    terminal,
 };
+use async_pty::PtyProcess;
 use sipper::sipper;
 
 #[derive(Debug, Clone)]
-pub enum Message {
+pub struct Message(InnerMessage);
+
+#[derive(Debug, Clone)]
+enum InnerMessage {
     Opened(Arc<(PtyProcess, tokio::sync::mpsc::Receiver<Vec<u8>>)>),
-    Terminal(frozen_term::Message),
+    Terminal(terminal::Message),
     Output(Vec<u8>),
     Closed,
 }
@@ -30,25 +36,20 @@ enum State {
 
 pub struct LocalTerminal {
     state: State,
-    display: frozen_term::Terminal,
+    display: terminal::Terminal,
 }
 
 impl LocalTerminal {
     pub fn start(
-        font: Option<iced::Font>,
         key_filter: impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool,
     ) -> (Self, Task<Message>) {
         let size = async_pty::TerminalSize { cols: 80, rows: 24 };
-        let (display, display_task) = frozen_term::Terminal::new(size.rows, size.cols);
-        let mut display = display.key_filter(key_filter);
-
-        if let Some(font) = font {
-            display = display.font(font);
-        }
+        let (display, display_task) = terminal::Terminal::new(size.rows, size.cols);
+        let display = display.key_filter(key_filter);
 
         let start_task = Task::future(async {
             let (process, output) = PtyProcess::shell(size).await.unwrap();
-            Message::Opened(Arc::new((process, output)))
+            Message(InnerMessage::Opened(Arc::new((process, output))))
         });
 
         (
@@ -56,45 +57,59 @@ impl LocalTerminal {
                 state: State::Starting,
                 display,
             },
-            Task::batch([display_task.map(Message::Terminal), start_task]),
+            Task::batch([
+                display_task.map(InnerMessage::Terminal).map(Message),
+                start_task,
+            ]),
         )
+    }
+
+    pub fn style(mut self, style: terminal::style::Style) -> Self {
+        self.set_style(style);
+        self
+    }
+
+    pub fn set_style(&mut self, style: terminal::style::Style) {
+        self.display.set_style(style);
     }
 
     #[must_use]
     pub fn update(&mut self, message: Message) -> Action {
-        match message {
-            Message::Opened(arc) => {
+        match message.0 {
+            InnerMessage::Opened(arc) => {
                 let (process, output) = Arc::into_inner(arc).unwrap();
 
                 let stream = sipper(|mut sender| async move {
                     let mut output = output;
                     while let Some(chunk) = output.recv().await {
-                        sender.send(Message::Output(chunk)).await;
+                        sender.send(InnerMessage::Output(chunk)).await;
                     }
 
-                    sender.send(Message::Closed).await;
+                    sender.send(InnerMessage::Closed).await;
                 });
 
-                let task = Task::stream(stream);
+                let task = Task::stream(stream).map(Message);
 
                 self.state = State::Active(process);
 
                 Action::Run(task)
             }
-            Message::Terminal(message) => {
+            InnerMessage::Terminal(message) => {
                 let action = self.display.update(message);
 
                 match action {
-                    frozen_term::Action::None => Action::None,
-                    frozen_term::Action::Run(task) => Action::Run(task.map(Message::Terminal)),
-                    frozen_term::Action::IdChanged => Action::IdChanged,
-                    frozen_term::Action::Input(input) => {
+                    terminal::Action::None => Action::None,
+                    terminal::Action::Run(task) => {
+                        Action::Run(task.map(InnerMessage::Terminal).map(Message))
+                    }
+                    terminal::Action::IdChanged => Action::IdChanged,
+                    terminal::Action::Input(input) => {
                         if let State::Active(pty) = &self.state {
                             pty.try_write(input).unwrap();
                         }
                         Action::None
                     }
-                    frozen_term::Action::Resize(size) => {
+                    terminal::Action::Resize(size) => {
                         if let State::Active(pty) = &self.state {
                             pty.try_resize(async_pty::TerminalSize {
                                 rows: size.rows as u16,
@@ -106,12 +121,12 @@ impl LocalTerminal {
                     }
                 }
             }
-            Message::Output(output) => {
+            InnerMessage::Output(output) => {
                 self.display.advance_bytes(output);
 
                 Action::None
             }
-            Message::Closed => {
+            InnerMessage::Closed => {
                 self.state = State::Closed;
 
                 Action::Close
@@ -122,9 +137,11 @@ impl LocalTerminal {
     pub fn view<'a>(&'a self) -> Element<'a, Message> {
         match &self.state {
             State::Starting => center(text!("opening pty...")).into(),
-            State::Active(_) => center(self.display.view().map(Message::Terminal))
-                .padding(10)
-                .into(),
+            State::Active(_) => {
+                center(self.display.view().map(InnerMessage::Terminal).map(Message))
+                    .padding(10)
+                    .into()
+            }
             State::Closed => center(text!("pty closed")).height(Length::Fill).into(),
         }
     }

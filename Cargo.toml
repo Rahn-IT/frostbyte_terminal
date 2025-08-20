@@ -1,8 +1,9 @@
 [workspace]
+default-members = ["frozen_term", "frostbyte_term", "async_pty"]
 
 resolver = "2"
 
-members = ["async_pty", "frozen_term", "frostbyte_term"]
+members = ["async_pty", "frozen_term", "frostbyte_term", "examples/*"]
 
 [workspace.dependencies]
 anyhow = "1.0.99"
