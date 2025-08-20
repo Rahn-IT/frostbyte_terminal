@@ -7,6 +7,8 @@ mod ui;
 use iced_layershell::settings::{LayerShellSettings, StartMode};
 use ui::UI;
 
+const FONT: &[u8] = include_bytes!("../fonts/RobotoMonoNerdFont-Regular.ttf");
+
 fn main() {
     #[cfg(target_os = "linux")]
     if std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DEBUG").is_none() {
@@ -20,7 +22,7 @@ fn main() {
 
 fn run_iced() {
     iced::daemon(UI::start_winit, UI::update, UI::view)
-        .font(include_bytes!("../fonts/RobotoMonoNerdFont-Regular.ttf"))
+        .font(FONT)
         .subscription(UI::subscription)
         .title(UI::title)
         .theme(|_, _| iced::Theme::Dark)
@@ -37,7 +39,7 @@ fn run_layershell() {
         UI::update,
         UI::view,
     )
-    .font(include_bytes!("../fonts/RobotoMonoNerdFont-Regular.ttf"))
+    .font(FONT)
     .subscription(UI::subscription)
     .theme(|_, _| iced::Theme::Dark)
     .antialiasing(true)
