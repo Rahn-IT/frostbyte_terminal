@@ -3,6 +3,9 @@ name = "frostbyte_term"
 version = "0.1.5"
 edition = "2024"
 
+[metadata.frost_wizard]
+friendly_name = "Frostbyte Terminal"
+
 [dependencies]
 frozen_term = { path = "../frozen_term", features = [
     "iced-master",
