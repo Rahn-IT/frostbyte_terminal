@@ -15,7 +15,7 @@ use frozen_term::local_terminal::{self, LocalTerminal};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
     Element, Font, Length, Subscription, Task,
-    futures::SinkExt,
+    futures::{SinkExt, Stream},
     keyboard,
     stream::channel,
     widget::{button, center, column, row, text},
@@ -24,7 +24,6 @@ use iced::{
 #[cfg(target_os = "linux")]
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
 use image::GenericImageView;
-use sipper::Stream;
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder};
 
 /// Messages emitted by the application and its widgets.

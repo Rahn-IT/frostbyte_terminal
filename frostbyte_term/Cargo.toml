@@ -9,16 +9,12 @@ friendly_name = "Frostbyte Terminal"
 [dependencies]
 frozen_term = { path = "../frozen_term", features = ["local-terminal"] }
 iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
-# iced = { workspace = true }
-tokio-util = { workspace = true }
 async_pty = { path = "../async_pty" }
-# iced_aw = { version = "0.12.2", features = ["tab_bar", "tabs"] }
 global-hotkey = "0.7.0"
 tray-icon = "0.21.1"
 tokio = "1.47.1"
 image = { version = "0.25.6", default-features = false, features = ["png"] }
 signal-hook = "0.3.18"
-sipper = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iced_layershell = { git = "https://github.com/acul009/exwlshelleventloop.git" }

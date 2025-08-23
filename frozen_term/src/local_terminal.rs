@@ -4,9 +4,9 @@ use crate::terminal;
 use async_pty::PtyProcess;
 use iced::{
     self, Element, Length, Task,
+    task::sipper,
     widget::{center, text},
 };
-use sipper::sipper;
 
 #[derive(Debug, Clone)]
 pub struct Message(InnerMessage);
