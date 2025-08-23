@@ -1274,7 +1274,7 @@ where
     }
 
     fn operate(
-        &self,
+        &mut self,
         tree: &mut iced::advanced::widget::Tree,
         _layout: iced::advanced::Layout<'_>,
         _renderer: &Renderer,
@@ -1289,7 +1289,7 @@ where
     }
 
     fn layout(
-        &self,
+        &mut self,
         tree: &mut iced::advanced::widget::Tree,
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
