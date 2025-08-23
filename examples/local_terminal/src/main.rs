@@ -4,6 +4,7 @@ use iced::Task;
 pub fn main() {
     iced::application(UI::start, UI::update, UI::view)
         .title(UI::title)
+        .antialiasing(true)
         .run()
         .unwrap()
 }

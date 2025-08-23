@@ -514,6 +514,8 @@ impl Terminal {
 
     // Helper to update the current iced text representation from the current wezterm data
     fn update_formatted_rows(&mut self, force: bool) {
+        self.cursor_pos = self.term.cursor_pos();
+
         if force {
             self.term.increment_seqno();
         }
@@ -537,8 +539,6 @@ impl Terminal {
             let visible_range = visible_rows_start..visible_rows_end;
 
             let term_lines = screen.lines_in_phys_range(visible_range);
-
-            self.cursor_pos = self.term.cursor_pos();
 
             let mut is_current_selected = false;
             let range_start = visible_rows_end.saturating_sub(screen.physical_rows);
@@ -1321,6 +1321,12 @@ where
             state.rows.pop_back();
         }
 
+        let text_size = self
+            .term
+            .style
+            .text_size
+            .unwrap_or_else(|| renderer.default_size());
+
         for (paragraph_row, formatted_row) in
             state.rows.iter_mut().zip(self.term.formatted_rows.iter())
         {
@@ -1328,12 +1334,6 @@ where
                 continue;
             }
             paragraph_row.last_layout_seqno = formatted_row.last_update_seqno;
-
-            let text_size = self
-                .term
-                .style
-                .text_size
-                .unwrap_or_else(|| renderer.default_size());
 
             let text = iced::advanced::Text {
                 content: formatted_row.spans.as_ref(),
