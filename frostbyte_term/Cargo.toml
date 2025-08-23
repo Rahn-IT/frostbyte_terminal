@@ -7,10 +7,7 @@ edition = "2024"
 friendly_name = "Frostbyte Terminal"
 
 [dependencies]
-frozen_term = { path = "../frozen_term", features = [
-    "iced-master",
-    "local-terminal",
-] }
+frozen_term = { path = "../frozen_term", features = ["local-terminal"] }
 iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
 # iced = { workspace = true }
 tokio-util = { workspace = true }

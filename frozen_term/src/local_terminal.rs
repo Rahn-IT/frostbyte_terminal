@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use crate::{
-    iced::{
-        self, Element, Length, Task,
-        widget::{center, text},
-    },
-    terminal,
-};
+use crate::terminal;
 use async_pty::PtyProcess;
+use iced::{
+    self, Element, Length, Task,
+    widget::{center, text},
+};
 use sipper::sipper;
 
 #[derive(Debug, Clone)]

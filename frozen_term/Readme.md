@@ -17,14 +17,21 @@ It is similar to `iced_term`, but has a few key differences:
 - focus support (still a bit inconsistent)
 - allows for custom monospace fonts (e.g. to embed nerdfonts)
 
+## iced 0.13
+
+If you need support for iced 0.13, please create an issue. As the code started deviating more,
+the feature flag for 0.13 became harder and harder to maintain.
+
+It should still be relatively easy for me to add back support for iced 0.13 in a branch,
+but I don't want to go through that trouble unless someone actually needs it.
+
 ## Usage
 
 ### Local terminal
 
-`frozen_term` now also supports a local terminal directly, without you having to connect your own.
-Just enable the `local-terminal` feature.
+If you don't need to connect your own datastream from e.g. a serial port or a remote connection, it's recommended to use the `LocalTerminal`, which you can enable via the `local-terminal` feature.
 
-You can find a single windows minimal terminal in the examples folder.
+You can find a minimal terminal for a local terminal in the examples folder.
 
 ### Basic Setup
 
@@ -33,12 +40,10 @@ First, add `frozen_term` to your `Cargo.toml`:
 ```toml
 [dependencies]
 frozen_term = { git = "https://github.com/rahn-it/frostbyte_terminal.git", features = [
-    "iced-master",
+    "local-terminal",
 ] }
 iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
 ```
-
-
 
 ### Creating a Terminal Widget
 
@@ -144,9 +149,3 @@ let terminal = terminal.key_filter(|key, modifiers| {
     }
 });
 ```
-
-### Complete Example
-
-For a complete working example with PTY integration, see the `frostbyte_term` application in this repo.
-
-If you're missing a feature or found a bug, feel free to create an issue.

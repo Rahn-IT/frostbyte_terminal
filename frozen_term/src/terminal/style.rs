@@ -3,7 +3,7 @@ use std::{cell::LazyCell, sync::Arc};
 use termwiz::color::ColorAttribute;
 use wezterm_term::color::ColorPalette;
 
-use crate::iced::{self, Padding, Pixels};
+use iced::{Padding, Pixels};
 
 #[derive(Clone)]
 pub struct Style {
@@ -13,6 +13,9 @@ pub struct Style {
     pub background_color: iced::Color,
     pub foreground_color: iced::Color,
     pub font: iced::Font,
+    /// This value is used to set the height of the background for the text.
+    /// If you use a custom font, you might have to experiment which value works best for your font.
+    // pub font_height_modifier: f32,
     pub palette: Arc<Palette256>,
 }
 
@@ -47,6 +50,7 @@ const DEFAULT_STYLE: LazyCell<Style> = LazyCell::new(|| {
         background_color,
         foreground_color,
         font: iced::Font::MONOSPACE,
+        // font_height_modifier: 1.0,
         palette: Arc::new(Palette256::from_wezterm(palette.colors)),
     }
 });

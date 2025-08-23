@@ -4,8 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::iced;
-use crate::iced::{
+use iced::{
+    Rectangle, Size, Vector,
     advanced::{text::Paragraph, widget::operation::Focusable},
     mouse::ScrollDelta,
 };
@@ -845,6 +845,432 @@ struct TerminalWidget<'a, R: iced::advanced::text::Renderer> {
     font: R::Font,
 }
 
+struct State<R: iced::advanced::text::Renderer> {
+    focused: bool,
+    first_row_scrollback_pos: usize,
+    rows: VecDeque<ParagraphRow<R>>,
+    last_cursor_blink: Instant,
+    cursor_blink_currently_shown: bool,
+    now: Instant,
+    last_widget_width: f32,
+    last_widget_height: f32,
+    last_id: Option<Id>,
+}
+
+struct ParagraphRow<R: iced::advanced::text::Renderer> {
+    paragraph: R::Paragraph,
+    last_layout_seqno: usize,
+}
+
+const CHAR_WIDTH: f32 = 0.6;
+const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 500;
+
+impl<Renderer> iced::advanced::widget::operation::Focusable for State<Renderer>
+where
+    Renderer: iced::advanced::text::Renderer,
+{
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn focus(&mut self) {
+        self.focused = true;
+        self.last_cursor_blink = Instant::now();
+        self.cursor_blink_currently_shown = true;
+    }
+
+    fn unfocus(&mut self) {
+        self.focused = false;
+        self.cursor_blink_currently_shown = false;
+    }
+}
+
+impl<Theme, Renderer> iced::advanced::widget::Widget<InnerMessage, Theme, Renderer>
+    for TerminalWidget<'_, Renderer>
+where
+    Renderer: iced::advanced::text::Renderer<Font = iced::Font>,
+    Renderer: 'static,
+{
+    fn tag(&self) -> iced::advanced::widget::tree::Tag {
+        iced::advanced::widget::tree::Tag::of::<State<Renderer>>()
+    }
+
+    fn state(&self) -> iced::advanced::widget::tree::State {
+        iced::advanced::widget::tree::State::new(State::<Renderer> {
+            focused: false,
+            rows: VecDeque::new(),
+            first_row_scrollback_pos: 0,
+            last_cursor_blink: Instant::now(),
+            cursor_blink_currently_shown: false,
+            now: Instant::now(),
+            // needs to be none to detect newly created widgets
+            last_id: None,
+            last_widget_height: 0.0,
+            last_widget_width: 0.0,
+        })
+    }
+
+    fn size(&self) -> iced::Size<iced::Length> {
+        iced::Size::new(iced::Length::Fill, iced::Length::Fill)
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut iced::advanced::widget::Tree,
+        layout: iced::advanced::Layout<'_>,
+        _renderer: &Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        let state = tree.state.downcast_mut::<State<Renderer>>();
+
+        operation.focusable(Some(&self.term.id.0), layout.bounds(), state);
+    }
+
+    fn update(
+        &mut self,
+        state: &mut iced::advanced::widget::Tree,
+        event: &iced::Event,
+        layout: iced::advanced::Layout<'_>,
+        cursor: iced::advanced::mouse::Cursor,
+        renderer: &Renderer,
+        _clipboard: &mut dyn iced::advanced::Clipboard,
+        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
+        _viewport: &iced::Rectangle,
+    ) {
+        match event {
+            iced::Event::Window(iced::window::Event::RedrawRequested(now)) => {
+                let state = state.state.downcast_mut::<State<Renderer>>();
+
+                let term = &self.term.term;
+                let screen = term.screen();
+
+                let widget_width = layout.bounds().width - self.term.style.padding.horizontal();
+                let widget_height = layout.bounds().height - self.term.style.padding.vertical();
+
+                // check if id has changed
+                let id_changed = state
+                    .last_id
+                    .as_ref()
+                    .map(|last_id| last_id != &self.term.id)
+                    .unwrap_or(true);
+
+                if id_changed {
+                    state.last_id = Some(self.term.id.clone());
+                    shell.publish(InnerMessage::IdChanged);
+                }
+
+                // check if widget size has changed
+                if state.last_widget_width != widget_width
+                    || state.last_widget_height != widget_height
+                    || id_changed
+                {
+                    state.last_widget_width = widget_width;
+                    state.last_widget_height = widget_height;
+
+                    let line_height = renderer.default_size().0;
+                    let char_width = line_height * CHAR_WIDTH;
+
+                    let target_line_count = (0.77 * widget_height / line_height) as usize;
+                    let target_col_count = (widget_width / char_width) as usize;
+
+                    if screen.physical_rows != target_line_count
+                        || screen.physical_cols != target_col_count
+                    {
+                        let size = TerminalSize {
+                            rows: target_line_count,
+                            cols: target_col_count,
+                            pixel_height: widget_height as usize,
+                            pixel_width: widget_width as usize,
+                            ..Default::default()
+                        };
+                        shell.publish(InnerMessage::Resize(size));
+                    }
+                }
+
+                // handle blinking cursor
+                if state.is_focused() {
+                    state.now = *now;
+                    let millis_until_redraw = CURSOR_BLINK_INTERVAL_MILLIS
+                        .saturating_sub((*now - state.last_cursor_blink).as_millis());
+
+                    if millis_until_redraw == 0 {
+                        state.cursor_blink_currently_shown = !state.cursor_blink_currently_shown;
+                        state.last_cursor_blink = *now;
+                    }
+
+                    shell.request_redraw_at(
+                        *now + Duration::from_millis(millis_until_redraw as u64),
+                    );
+                } else if state.cursor_blink_currently_shown == true {
+                    state.cursor_blink_currently_shown = false;
+                    shell.request_redraw();
+                }
+            }
+            iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => {
+                let state = state.state.downcast_mut::<State<Renderer>>();
+                if state.is_focused() {
+                    shell.publish(InnerMessage::Scrolled(delta.clone()));
+                    shell.capture_event();
+                }
+            }
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(button)) => {
+                let state = state.state.downcast_mut::<State<Renderer>>();
+                let newly_focused = cursor.position_over(layout.bounds()).is_some();
+
+                if newly_focused {
+                    state.focus();
+
+                    // Handle text selection start
+                    if *button == iced::mouse::Button::Left {
+                        // Hide context menu if visible
+                        if self.term.context_menu_position.is_some() {
+                            shell.publish(InnerMessage::HideContextMenu);
+                        }
+
+                        if let Some(cursor_position) = cursor.position() {
+                            if let Some(char_pos) =
+                                self.screen_to_grid_position(cursor_position, layout, renderer)
+                            {
+                                shell.publish(InnerMessage::StartSelection(char_pos));
+                                shell.request_redraw();
+                            }
+                        }
+                    }
+
+                    // Handle right-click for context menu
+                    if *button == iced::mouse::Button::Right {
+                        if let Some(cursor_position) = cursor.position() {
+                            shell.publish(InnerMessage::ShowContextMenu(cursor_position));
+                            shell.request_redraw();
+                        }
+                    }
+
+                    shell.capture_event();
+                } else {
+                    state.unfocus();
+                }
+            }
+            iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                if let SelectionState::Selecting { current, .. } = &self.term.selection_state {
+                    if let Some(char_pos) =
+                        self.screen_to_grid_position(*position, layout, renderer)
+                    {
+                        let horizontal_offset = self.term.term.screen().scrollback_rows()
+                            - self.term.term.get_size().rows
+                            - self.term.scroll_pos;
+                        if &char_pos.into_selection_position(horizontal_offset) != current {
+                            shell.publish(InnerMessage::MoveSelection(char_pos));
+                        }
+                    }
+                    shell.capture_event();
+                }
+            }
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(button)) => {
+                if *button == iced::mouse::Button::Left {
+                    if let SelectionState::Selecting { .. } = &self.term.selection_state {
+                        shell.publish(InnerMessage::EndSelection);
+                    }
+                    shell.capture_event();
+                }
+            }
+            iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
+                let state = state.state.downcast_mut::<State<Renderer>>();
+                let newly_focused = cursor.position_over(layout.bounds()).is_some();
+
+                if newly_focused {
+                    state.focus();
+                    shell.capture_event();
+                } else {
+                    state.unfocus();
+                }
+            }
+            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                modified_key,
+                modifiers,
+                ..
+            }) => {
+                let state = state.state.downcast_mut::<State<Renderer>>();
+
+                if state.is_focused() {
+                    if let Some(filter) = &self.term.key_filter {
+                        if filter(&modified_key, &modifiers) {
+                            return;
+                        }
+                    }
+
+                    state.last_cursor_blink = Instant::now();
+                    state.cursor_blink_currently_shown = true;
+
+                    let message = InnerMessage::KeyPress {
+                        modified_key: modified_key.clone(),
+                        modifiers: modifiers.clone(),
+                    };
+                    shell.publish(message);
+
+                    shell.capture_event();
+                }
+            }
+            iced::Event::Window(iced::window::Event::Focused) => {
+                let state = state.state.downcast_mut::<State<Renderer>>();
+                state.focus();
+                shell.request_redraw();
+            }
+            _ => (),
+        }
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut iced::advanced::widget::Tree,
+        renderer: &Renderer,
+        limits: &iced::advanced::layout::Limits,
+    ) -> iced::advanced::layout::Node {
+        let state = tree.state.downcast_mut::<State<Renderer>>();
+
+        // Add or remove rows from the front
+        if state.first_row_scrollback_pos > self.term.first_row_scrollback_pos {
+            for _ in self.term.first_row_scrollback_pos..state.first_row_scrollback_pos {
+                state.rows.push_front(ParagraphRow {
+                    last_layout_seqno: 0,
+                    paragraph: Renderer::Paragraph::default(),
+                });
+            }
+        } else if state.first_row_scrollback_pos < self.term.first_row_scrollback_pos {
+            for _ in state.first_row_scrollback_pos..self.term.first_row_scrollback_pos {
+                state.rows.pop_front();
+            }
+        }
+        state.first_row_scrollback_pos = self.term.first_row_scrollback_pos;
+
+        while state.rows.len() < self.term.formatted_rows.len() {
+            state.rows.push_back(ParagraphRow {
+                last_layout_seqno: 0,
+                paragraph: Renderer::Paragraph::default(),
+            });
+        }
+        while state.rows.len() > self.term.formatted_rows.len() {
+            state.rows.pop_back();
+        }
+
+        let text_size = self
+            .term
+            .style
+            .text_size
+            .unwrap_or_else(|| renderer.default_size());
+
+        for (paragraph_row, formatted_row) in
+            state.rows.iter_mut().zip(self.term.formatted_rows.iter())
+        {
+            if paragraph_row.last_layout_seqno == formatted_row.last_update_seqno {
+                continue;
+            }
+            paragraph_row.last_layout_seqno = formatted_row.last_update_seqno;
+
+            let text = iced::advanced::Text {
+                content: formatted_row.spans.as_ref(),
+                bounds: iced::Size::new(
+                    limits.max().width,
+                    self.term.style.line_height.to_absolute(text_size).0,
+                ),
+                size: text_size,
+                line_height: iced::advanced::text::LineHeight::default(),
+                font: self.font,
+                align_x: iced::advanced::text::Alignment::Left,
+                align_y: iced::alignment::Vertical::Top,
+                shaping: iced::widget::text::Shaping::Advanced,
+                wrapping: iced::widget::text::Wrapping::None,
+            };
+
+            paragraph_row.paragraph = iced::advanced::text::Paragraph::with_spans(text);
+        }
+
+        iced::advanced::layout::Node::new(limits.max())
+    }
+
+    fn draw(
+        &self,
+        tree: &iced::advanced::widget::Tree,
+        renderer: &mut Renderer,
+        _theme: &Theme,
+        _style: &iced::advanced::renderer::Style,
+        layout: iced::advanced::Layout<'_>,
+        _cursor: iced::advanced::mouse::Cursor,
+        viewport: &iced::Rectangle,
+    ) {
+        let Some(bounds) = layout.bounds().intersection(viewport) else {
+            return;
+        };
+
+        let state = tree.state.downcast_ref::<State<Renderer>>();
+        let padding_offset =
+            iced::Vector::new(self.term.style.padding.left, self.term.style.padding.top);
+        let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
+
+        // terminal Background
+        renderer.fill_quad(
+            iced::advanced::renderer::Quad {
+                bounds: layout.bounds(),
+                ..Default::default()
+            },
+            self.term.style.background_color,
+        );
+
+        let size = self
+            .term
+            .style
+            .text_size
+            .unwrap_or_else(|| renderer.default_size());
+
+        let y_multiplier = self.term.style.line_height.to_absolute(size).0;
+
+        // drawing text background
+        for (row_index, (paragraph_row, formatted_row)) in state
+            .rows
+            .iter()
+            .zip(self.term.formatted_rows.iter())
+            .enumerate()
+        {
+            let paragraph = &paragraph_row.paragraph;
+            let y_offset = y_multiplier * row_index as f32;
+
+            for (index, span) in formatted_row.spans.iter().enumerate() {
+                if let Some(highlight) = span.highlight {
+                    let regions = paragraph.span_bounds(index);
+
+                    for bounds in &regions {
+                        let position =
+                            bounds.position() - Vector::new(span.padding.left, span.padding.top);
+
+                        let size = bounds.size()
+                            + Size::new(span.padding.horizontal(), span.padding.vertical());
+
+                        let position = position + translation + iced::Vector::new(0.0, y_offset);
+                        let bounds = Rectangle::new(position, size);
+
+                        renderer.fill_quad(
+                            iced::advanced::renderer::Quad {
+                                bounds,
+                                border: highlight.border,
+                                ..Default::default()
+                            },
+                            highlight.background,
+                        );
+                    }
+                }
+            }
+
+            renderer.fill_paragraph(
+                &paragraph,
+                bounds.position() + padding_offset + iced::Vector::new(0.0, y_offset),
+                self.term.style.foreground_color,
+                bounds,
+            );
+        }
+
+        self.draw_cursor(renderer, &state, translation);
+    }
+}
+
 impl<'a, R> TerminalWidget<'a, R>
 where
     R: iced::advanced::text::Renderer,
@@ -976,507 +1402,5 @@ where
             },
             iced::Color::WHITE,
         );
-    }
-}
-
-struct State<R: iced::advanced::text::Renderer> {
-    focused: bool,
-    first_row_scrollback_pos: usize,
-    rows: VecDeque<ParagraphRow<R>>,
-    last_cursor_blink: Instant,
-    cursor_blink_currently_shown: bool,
-    now: Instant,
-    last_widget_width: f32,
-    last_widget_height: f32,
-    last_id: Option<Id>,
-}
-
-struct ParagraphRow<R: iced::advanced::text::Renderer> {
-    paragraph: R::Paragraph,
-    last_layout_seqno: usize,
-}
-
-const CHAR_WIDTH: f32 = 0.6;
-const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 500;
-
-impl<Renderer> iced::advanced::widget::operation::Focusable for State<Renderer>
-where
-    Renderer: iced::advanced::text::Renderer,
-{
-    fn is_focused(&self) -> bool {
-        self.focused
-    }
-
-    fn focus(&mut self) {
-        self.focused = true;
-        self.last_cursor_blink = Instant::now();
-        self.cursor_blink_currently_shown = true;
-    }
-
-    fn unfocus(&mut self) {
-        self.focused = false;
-        self.cursor_blink_currently_shown = false;
-    }
-}
-
-impl<Renderer> TerminalWidget<'_, Renderer>
-where
-    Renderer: iced::advanced::text::Renderer,
-    Renderer: 'static,
-{
-    fn combined_update(
-        &mut self,
-        tree: &mut iced::advanced::widget::Tree,
-        event: &iced::Event,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        renderer: &Renderer,
-        _clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
-        _viewport: &iced::Rectangle,
-    ) -> iced::advanced::graphics::core::event::Status {
-        match event {
-            iced::Event::Window(iced::window::Event::RedrawRequested(now)) => {
-                let state = tree.state.downcast_mut::<State<Renderer>>();
-
-                let term = &self.term.term;
-                let screen = term.screen();
-
-                let widget_width = layout.bounds().width - self.term.style.padding.horizontal();
-                let widget_height = layout.bounds().height - self.term.style.padding.vertical();
-
-                // check if id has changed
-                let id_changed = state
-                    .last_id
-                    .as_ref()
-                    .map(|last_id| last_id != &self.term.id)
-                    .unwrap_or(true);
-
-                if id_changed {
-                    state.last_id = Some(self.term.id.clone());
-                    shell.publish(InnerMessage::IdChanged);
-                }
-
-                // check if widget size has changed
-                if state.last_widget_width != widget_width
-                    || state.last_widget_height != widget_height
-                    || id_changed
-                {
-                    state.last_widget_width = widget_width;
-                    state.last_widget_height = widget_height;
-
-                    let line_height = renderer.default_size().0;
-                    let char_width = line_height * CHAR_WIDTH;
-
-                    let target_line_count = (0.77 * widget_height / line_height) as usize;
-                    let target_col_count = (widget_width / char_width) as usize;
-
-                    if screen.physical_rows != target_line_count
-                        || screen.physical_cols != target_col_count
-                    {
-                        let size = TerminalSize {
-                            rows: target_line_count,
-                            cols: target_col_count,
-                            pixel_height: widget_height as usize,
-                            pixel_width: widget_width as usize,
-                            ..Default::default()
-                        };
-                        shell.publish(InnerMessage::Resize(size));
-                    }
-                }
-
-                // handle blinking cursor
-                if state.is_focused() {
-                    state.now = *now;
-                    let millis_until_redraw = CURSOR_BLINK_INTERVAL_MILLIS
-                        .saturating_sub((*now - state.last_cursor_blink).as_millis());
-
-                    if millis_until_redraw == 0 {
-                        state.cursor_blink_currently_shown = !state.cursor_blink_currently_shown;
-                        state.last_cursor_blink = *now;
-                    }
-
-                    #[cfg(feature = "iced-master")]
-                    shell.request_redraw_at(
-                        *now + Duration::from_millis(millis_until_redraw as u64),
-                    );
-                    #[cfg(feature = "iced-013")]
-                    shell.request_redraw(iced::window::RedrawRequest::At(
-                        *now + Duration::from_millis(millis_until_redraw as u64),
-                    ));
-                } else if state.cursor_blink_currently_shown == true {
-                    state.cursor_blink_currently_shown = false;
-                    #[cfg(feature = "iced-master")]
-                    shell.request_redraw();
-                    #[cfg(feature = "iced-013")]
-                    shell.request_redraw(iced::window::RedrawRequest::NextFrame);
-                }
-
-                iced::advanced::graphics::core::event::Status::Ignored
-            }
-            iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => {
-                shell.publish(InnerMessage::Scrolled(delta.clone()));
-
-                iced::advanced::graphics::core::event::Status::Captured
-            }
-            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(button)) => {
-                let state = tree.state.downcast_mut::<State<Renderer>>();
-                let newly_focused = cursor.position_over(layout.bounds()).is_some();
-
-                if newly_focused {
-                    state.focus();
-
-                    // Handle text selection start
-                    if *button == iced::mouse::Button::Left {
-                        // Hide context menu if visible
-                        if self.term.context_menu_position.is_some() {
-                            shell.publish(InnerMessage::HideContextMenu);
-                        }
-
-                        if let Some(cursor_position) = cursor.position() {
-                            if let Some(char_pos) =
-                                self.screen_to_grid_position(cursor_position, layout, renderer)
-                            {
-                                shell.publish(InnerMessage::StartSelection(char_pos));
-                                #[cfg(feature = "iced-master")]
-                                shell.request_redraw();
-                                #[cfg(feature = "iced-013")]
-                                shell.request_redraw(iced::window::RedrawRequest::NextFrame);
-                            }
-                        }
-                    }
-
-                    // Handle right-click for context menu
-                    if *button == iced::mouse::Button::Right {
-                        if let Some(cursor_position) = cursor.position() {
-                            shell.publish(InnerMessage::ShowContextMenu(cursor_position));
-                            #[cfg(feature = "iced-master")]
-                            shell.request_redraw();
-                            #[cfg(feature = "iced-013")]
-                            shell.request_redraw(iced::window::RedrawRequest::NextFrame);
-                        }
-                    }
-
-                    iced::advanced::graphics::core::event::Status::Captured
-                } else {
-                    state.unfocus();
-                    iced::advanced::graphics::core::event::Status::Ignored
-                }
-            }
-            iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                if let SelectionState::Selecting { current, .. } = &self.term.selection_state {
-                    if let Some(char_pos) =
-                        self.screen_to_grid_position(*position, layout, renderer)
-                    {
-                        let horizontal_offset = self.term.term.screen().scrollback_rows()
-                            - self.term.term.get_size().rows
-                            - self.term.scroll_pos;
-                        if &char_pos.into_selection_position(horizontal_offset) != current {
-                            shell.publish(InnerMessage::MoveSelection(char_pos));
-                        }
-                    }
-                    iced::advanced::graphics::core::event::Status::Captured
-                } else {
-                    iced::advanced::graphics::core::event::Status::Ignored
-                }
-            }
-            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(button)) => {
-                if *button == iced::mouse::Button::Left {
-                    if let SelectionState::Selecting { .. } = &self.term.selection_state {
-                        shell.publish(InnerMessage::EndSelection);
-                    }
-                    iced::advanced::graphics::core::event::Status::Captured
-                } else {
-                    iced::advanced::graphics::core::event::Status::Ignored
-                }
-            }
-            iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
-                let state = tree.state.downcast_mut::<State<Renderer>>();
-                let newly_focused = cursor.position_over(layout.bounds()).is_some();
-
-                if newly_focused {
-                    state.focus();
-                    iced::advanced::graphics::core::event::Status::Captured
-                } else {
-                    state.unfocus();
-                    iced::advanced::graphics::core::event::Status::Ignored
-                }
-            }
-            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                modified_key,
-                modifiers,
-                ..
-            }) => {
-                let state = tree.state.downcast_mut::<State<Renderer>>();
-
-                if state.is_focused() {
-                    if let Some(filter) = &self.term.key_filter {
-                        if filter(&modified_key, &modifiers) {
-                            return iced::advanced::graphics::core::event::Status::Ignored;
-                        }
-                    }
-
-                    state.last_cursor_blink = Instant::now();
-                    state.cursor_blink_currently_shown = true;
-
-                    let message = InnerMessage::KeyPress {
-                        modified_key: modified_key.clone(),
-                        modifiers: modifiers.clone(),
-                    };
-                    shell.publish(message);
-
-                    iced::advanced::graphics::core::event::Status::Captured
-                } else {
-                    iced::advanced::graphics::core::event::Status::Ignored
-                }
-            }
-            iced::Event::Window(iced::window::Event::Focused) => {
-                let state = tree.state.downcast_mut::<State<Renderer>>();
-                state.focus();
-                #[cfg(feature = "iced-master")]
-                shell.request_redraw();
-                #[cfg(feature = "iced-013")]
-                shell.request_redraw(iced::window::RedrawRequest::NextFrame);
-                iced::advanced::graphics::core::event::Status::Ignored
-            }
-            _ => iced::advanced::graphics::core::event::Status::Ignored,
-        }
-    }
-}
-
-impl<Theme, Renderer> iced::advanced::widget::Widget<InnerMessage, Theme, Renderer>
-    for TerminalWidget<'_, Renderer>
-where
-    Renderer: iced::advanced::text::Renderer<Font = iced::Font>,
-    Renderer: 'static,
-{
-    fn tag(&self) -> iced::advanced::widget::tree::Tag {
-        iced::advanced::widget::tree::Tag::of::<State<Renderer>>()
-    }
-
-    fn state(&self) -> iced::advanced::widget::tree::State {
-        iced::advanced::widget::tree::State::new(State::<Renderer> {
-            focused: false,
-            rows: VecDeque::new(),
-            first_row_scrollback_pos: 0,
-            last_cursor_blink: Instant::now(),
-            cursor_blink_currently_shown: false,
-            now: Instant::now(),
-            // needs to be none to detect newly created widgets
-            last_id: None,
-            last_widget_height: 0.0,
-            last_widget_width: 0.0,
-        })
-    }
-
-    fn size(&self) -> iced::Size<iced::Length> {
-        iced::Size::new(iced::Length::Fill, iced::Length::Fill)
-    }
-
-    fn operate(
-        &mut self,
-        tree: &mut iced::advanced::widget::Tree,
-        _layout: iced::advanced::Layout<'_>,
-        _renderer: &Renderer,
-        operation: &mut dyn iced::advanced::widget::Operation,
-    ) {
-        let state = tree.state.downcast_mut::<State<Renderer>>();
-
-        #[cfg(feature = "iced-master")]
-        operation.focusable(Some(&self.term.id.0), _layout.bounds(), state);
-        #[cfg(feature = "iced-013")]
-        operation.focusable(state, Some(&self.term.id.0));
-    }
-
-    fn layout(
-        &mut self,
-        tree: &mut iced::advanced::widget::Tree,
-        renderer: &Renderer,
-        limits: &iced::advanced::layout::Limits,
-    ) -> iced::advanced::layout::Node {
-        let state = tree.state.downcast_mut::<State<Renderer>>();
-
-        // Add or remove rows from the front
-        if state.first_row_scrollback_pos > self.term.first_row_scrollback_pos {
-            for _ in self.term.first_row_scrollback_pos..state.first_row_scrollback_pos {
-                state.rows.push_front(ParagraphRow {
-                    last_layout_seqno: 0,
-                    paragraph: Renderer::Paragraph::default(),
-                });
-            }
-        } else if state.first_row_scrollback_pos < self.term.first_row_scrollback_pos {
-            for _ in state.first_row_scrollback_pos..self.term.first_row_scrollback_pos {
-                state.rows.pop_front();
-            }
-        }
-        state.first_row_scrollback_pos = self.term.first_row_scrollback_pos;
-
-        while state.rows.len() < self.term.formatted_rows.len() {
-            state.rows.push_back(ParagraphRow {
-                last_layout_seqno: 0,
-                paragraph: Renderer::Paragraph::default(),
-            });
-        }
-        while state.rows.len() > self.term.formatted_rows.len() {
-            state.rows.pop_back();
-        }
-
-        let text_size = self
-            .term
-            .style
-            .text_size
-            .unwrap_or_else(|| renderer.default_size());
-
-        for (paragraph_row, formatted_row) in
-            state.rows.iter_mut().zip(self.term.formatted_rows.iter())
-        {
-            if paragraph_row.last_layout_seqno == formatted_row.last_update_seqno {
-                continue;
-            }
-            paragraph_row.last_layout_seqno = formatted_row.last_update_seqno;
-
-            let text = iced::advanced::Text {
-                content: formatted_row.spans.as_ref(),
-                bounds: iced::Size::new(
-                    limits.max().width,
-                    self.term.style.line_height.to_absolute(text_size).0,
-                ),
-                size: text_size,
-                line_height: iced::advanced::text::LineHeight::default(),
-                font: self.font,
-                #[cfg(feature = "iced-master")]
-                align_x: iced::advanced::text::Alignment::Left,
-                #[cfg(feature = "iced-013")]
-                horizontal_alignment: iced::alignment::Horizontal::Left,
-                #[cfg(feature = "iced-master")]
-                align_y: iced::alignment::Vertical::Top,
-                #[cfg(feature = "iced-013")]
-                vertical_alignment: iced::alignment::Vertical::Top,
-                shaping: iced::widget::text::Shaping::Advanced,
-                wrapping: iced::widget::text::Wrapping::None,
-            };
-
-            paragraph_row.paragraph = iced::advanced::text::Paragraph::with_spans(text);
-        }
-
-        iced::advanced::layout::Node::new(limits.max())
-    }
-
-    #[cfg(feature = "iced-master")]
-    fn update(
-        &mut self,
-        state: &mut iced::advanced::widget::Tree,
-        event: &iced::Event,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        renderer: &Renderer,
-        clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
-        viewport: &iced::Rectangle,
-    ) {
-        self.combined_update(
-            state, event, layout, cursor, renderer, clipboard, shell, viewport,
-        );
-    }
-
-    #[cfg(feature = "iced-013")]
-    fn on_event(
-        &mut self,
-        state: &mut iced::advanced::widget::Tree,
-        event: iced::Event,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        renderer: &Renderer,
-        clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
-        viewport: &iced::Rectangle,
-    ) -> iced::event::Status {
-        self.combined_update(
-            state, &event, layout, cursor, renderer, clipboard, shell, viewport,
-        )
-    }
-
-    fn draw(
-        &self,
-        tree: &iced::advanced::widget::Tree,
-        renderer: &mut Renderer,
-        _theme: &Theme,
-        _style: &iced::advanced::renderer::Style,
-        layout: iced::advanced::Layout<'_>,
-        _cursor: iced::advanced::mouse::Cursor,
-        viewport: &iced::Rectangle,
-    ) {
-        let Some(bounds) = layout.bounds().intersection(viewport) else {
-            return;
-        };
-
-        let state = tree.state.downcast_ref::<State<Renderer>>();
-        let padding_offset =
-            iced::Vector::new(self.term.style.padding.left, self.term.style.padding.top);
-        let translation = layout.position() - iced::Point::ORIGIN + padding_offset;
-
-        // terminal Background
-        renderer.fill_quad(
-            iced::advanced::renderer::Quad {
-                bounds: layout.bounds(),
-                ..Default::default()
-            },
-            self.term.style.background_color,
-        );
-
-        let size = self
-            .term
-            .style
-            .text_size
-            .unwrap_or_else(|| renderer.default_size());
-
-        let y_multiplier = self.term.style.line_height.to_absolute(size).0;
-
-        // drawing text background
-        for (row_index, (paragraph_row, formatted_row)) in state
-            .rows
-            .iter()
-            .zip(self.term.formatted_rows.iter())
-            .enumerate()
-        {
-            let paragraph = &paragraph_row.paragraph;
-            let y_offset = y_multiplier * row_index as f32;
-
-            for (index, span) in formatted_row.spans.iter().enumerate() {
-                if let Some(highlight) = span.highlight {
-                    let regions = paragraph.span_bounds(index);
-
-                    for bounds in &regions {
-                        let bounds = iced::Rectangle::new(
-                            bounds.position()
-                                - iced::Vector::new(span.padding.left, span.padding.top),
-                            bounds.size()
-                                + iced::Size::new(
-                                    span.padding.horizontal(),
-                                    span.padding.vertical(),
-                                ),
-                        );
-
-                        renderer.fill_quad(
-                            iced::advanced::renderer::Quad {
-                                bounds: bounds + translation + iced::Vector::new(0.0, y_offset),
-                                border: highlight.border,
-                                ..Default::default()
-                            },
-                            highlight.background,
-                        );
-                    }
-                }
-            }
-
-            renderer.fill_paragraph(
-                &paragraph,
-                bounds.position() + padding_offset + iced::Vector::new(0.0, y_offset),
-                self.term.style.foreground_color,
-                bounds,
-            );
-        }
-
-        self.draw_cursor(renderer, &state, translation);
     }
 }

@@ -22,7 +22,9 @@ impl UI {
     fn start() -> (Self, Task<Message>) {
         let (mut terminal, task) = LocalTerminal::start(|_, _| false);
 
-        terminal.set_style(frozen_term::Style::default());
+        terminal.set_style(frozen_term::Style {
+            ..Default::default()
+        });
 
         (Self { terminal }, task.map(Message::Terminal))
     }
