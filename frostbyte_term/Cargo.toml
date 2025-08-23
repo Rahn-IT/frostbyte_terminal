@@ -3,7 +3,7 @@ name = "frostbyte_term"
 version = "0.1.5"
 edition = "2024"
 
-[metadata.frost_wizard]
+[package.metadata.frost_wizard]
 friendly_name = "Frostbyte Terminal"
 
 [dependencies]
