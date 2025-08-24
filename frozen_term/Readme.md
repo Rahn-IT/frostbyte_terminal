@@ -33,9 +33,10 @@ If you don't need to connect your own datastream from e.g. a serial port or a re
 
 You can find a minimal terminal for a local terminal in the examples folder.
 
-### Basic Setup
+### Adding as Dependency
 
-First, add `frozen_term` to your `Cargo.toml`:
+First, add `frozen_term` to your `Cargo.toml`.
+Don't worry about the patches in the workspace file - these only apply for binaries in the workspace.
 
 ```toml
 [dependencies]
@@ -43,6 +44,23 @@ frozen_term = { git = "https://github.com/rahn-it/frostbyte_terminal.git", featu
     "local-terminal",
 ] }
 iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
+```
+
+Please ensure that your iced entry has neither a branch nor a revision selected. Otherwise you will face type collisions.
+If you want to use a custom version of iced, use cargo patching like this:
+
+```toml
+[patch."https://github.com/iced-rs/iced.git"]
+iced = { git = "https://github.com/acul009/iced.git" }
+iced_runtime = { git = "https://github.com/acul009/iced.git" }
+iced_core = { git = "https://github.com/acul009/iced.git" }
+iced_program = { git = "https://github.com/acul009/iced.git" }
+iced_renderer = { git = "https://github.com/acul009/iced.git" }
+iced_futures = { git = "https://github.com/acul009/iced.git" }
+iced_graphics = { git = "https://github.com/acul009/iced.git" }
+iced_debug = { git = "https://github.com/acul009/iced.git" }
+iced_devtools = { git = "https://github.com/acul009/iced.git" }
+iced_widget = { git = "https://github.com/acul009/iced.git" }
 ```
 
 ### Creating a Terminal Widget
