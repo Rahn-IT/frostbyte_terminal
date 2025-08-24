@@ -1,25 +1,19 @@
-use std::{
-    collections::VecDeque,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use iced::{
-    Rectangle, Size, Vector,
+    Rectangle, Size, Task, Vector,
     advanced::{text::Paragraph, widget::operation::Focusable},
     mouse::ScrollDelta,
 };
 
-use termwiz::surface::{CursorShape, CursorVisibility, SequenceNo};
-use tokio::sync::mpsc;
-use wezterm_term::{
-    CellAttributes, CursorPosition, TerminalConfiguration, Underline, color::ColorPalette,
+use wezterm_term::{CellAttributes, Underline};
+
+use crate::{
+    Style,
+    terminal::style::CursorShape,
+    terminal_grid::{PreRenderer, TerminalGrid},
+    wezterm::{WeztermGrid, prerenderer::WeztermPreRenderer},
 };
-
-pub use wezterm_term::TerminalSize;
-
-pub(crate) mod style;
-use style::Style;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct GridPosition {
@@ -131,12 +125,11 @@ pub struct Message(InnerMessage);
 
 #[derive(Debug, Clone)]
 enum InnerMessage {
-    Resize(TerminalSize),
+    Resize(crate::terminal_grid::Size),
     KeyPress {
         modified_key: iced::keyboard::key::Key,
         modifiers: iced::keyboard::Modifiers,
     },
-    Input(Vec<u8>),
     Paste(Option<String>),
     Scrolled(ScrollDelta),
     StartSelection(GridPosition),
@@ -152,116 +145,33 @@ enum InnerMessage {
 pub enum Action {
     None,
     Run(iced::Task<Message>),
-    Resize(TerminalSize),
+    Resize(crate::terminal_grid::Size),
     Input(Vec<u8>),
     IdChanged,
 }
 
 pub struct Terminal {
-    term: wezterm_term::Terminal,
+    grid: WeztermGrid,
     selection_state: SelectionState,
-    formatted_rows: VecDeque<FormattedRow>,
-    first_row_scrollback_pos: usize,
-    last_span_update: SequenceNo,
-    last_span_update_scroll_pos: usize,
     id: Id,
     key_filter: Option<Box<dyn Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool>>,
     // here to abort the task on drop
-    _handle: iced::task::Handle,
-    scroll_pos: usize,
-    cursor_pos: CursorPosition,
     context_menu_position: Option<iced::Point>,
-    style: style::Style,
-}
-
-struct FormattedRow {
-    last_update_seqno: usize,
-    spans: Vec<iced::advanced::text::Span<'static, (), iced::Font>>,
-}
-
-impl Default for FormattedRow {
-    fn default() -> Self {
-        FormattedRow {
-            last_update_seqno: 0,
-            spans: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Config {}
-
-impl TerminalConfiguration for Config {
-    fn color_palette(&self) -> wezterm_term::color::ColorPalette {
-        ColorPalette::default()
-    }
-}
-
-pub struct BridgedWriter {
-    send: mpsc::Sender<Vec<u8>>,
-}
-
-impl std::io::Write for BridgedWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if self.send.blocking_send(buf.to_vec()).is_ok() {
-            Ok(buf.len())
-        } else {
-            Ok(0)
-        }
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
+    style: Style,
 }
 
 impl Terminal {
-    pub fn new(rows: u16, cols: u16) -> (Self, iced::Task<Message>) {
-        let size = TerminalSize {
-            rows: rows as usize,
-            cols: cols as usize,
-            ..Default::default()
-        };
-
-        let config = Config {};
-
-        let (send, recv) = mpsc::channel(100);
-        let recv = tokio_stream::wrappers::ReceiverStream::new(recv);
-        let writer = BridgedWriter { send };
-
-        let term = wezterm_term::Terminal::new(
-            size,
-            Arc::new(config),
-            "frozen_term",
-            env!("CARGO_PKG_VERSION"),
-            Box::new(writer),
-        );
-
-        let cursor_pos = term.cursor_pos();
-
-        let (task, handle) = iced::Task::run(recv, InnerMessage::Input)
-            .map(Message)
-            .abortable();
-
-        let handle = handle.abort_on_drop();
-
+    pub fn new() -> (Self, iced::Task<Message>) {
         (
             Self {
-                term,
+                grid: WeztermGrid::new(),
                 selection_state: SelectionState::None,
-                formatted_rows: VecDeque::new(),
-                first_row_scrollback_pos: 0,
-                last_span_update: 0,
-                last_span_update_scroll_pos: 0,
                 id: Id(iced::advanced::widget::Id::unique()),
-                _handle: handle,
                 key_filter: None,
-                scroll_pos: 0,
-                cursor_pos,
                 context_menu_position: None,
                 style: Style::default(),
             },
-            task,
+            Task::none(),
         )
     }
 
@@ -313,81 +223,22 @@ impl Terminal {
     }
 
     pub fn get_title(&self) -> &str {
-        self.term.get_title()
+        self.grid.get_title()
     }
 
     pub fn advance_bytes<B>(&mut self, bytes: B)
     where
         B: AsRef<[u8]>,
     {
-        self.term.advance_bytes(bytes);
-        self.update_formatted_rows(false);
-    }
-
-    fn get_selected_text(&self) -> Option<String> {
-        let (start_pos, mut end_pos) = match &self.selection_state {
-            SelectionState::Selected { start, end } => (start.clone(), end.clone()),
-            SelectionState::Selecting { start, current } => (start.clone(), current.clone()),
-            SelectionState::None => return None,
-        };
-
-        end_pos.x += 1;
-
-        // Normalize selection so start is always before end
-        let (start_pos, end_pos) =
-            if start_pos.y < end_pos.y || (start_pos.y == end_pos.y && start_pos.x <= end_pos.x) {
-                (start_pos, end_pos)
-            } else {
-                (end_pos, start_pos)
-            };
-
-        let screen = self.term.screen();
-        let mut selected_text = String::new();
-
-        // Get lines directly from the selection range
-        let range = start_pos.y..end_pos.y + 1;
-        let term_lines = screen.lines_in_phys_range(range);
-
-        for (line_idx, line) in term_lines.iter().enumerate() {
-            let line_y = start_pos.y + line_idx;
-            let line_str = line.as_str();
-
-            if line_y == start_pos.y && line_y == end_pos.y {
-                // Single line selection
-                let start_x = start_pos.x.min(line_str.len());
-                let end_x = end_pos.x.min(line_str.len());
-                if start_x <= end_x {
-                    selected_text.push_str(&line_str[start_x..end_x]);
-                }
-            } else if line_y == start_pos.y {
-                // First line of multi-line selection
-                let start_x = start_pos.x.min(line_str.len());
-                selected_text.push_str(&line_str[start_x..]);
-                selected_text.push('\n');
-            } else if line_y == end_pos.y {
-                // Last line of multi-line selection
-                let end_x = (end_pos.x).min(line_str.len());
-                selected_text.push_str(&line_str[..end_x]);
-            } else {
-                // Middle line of multi-line selection
-                selected_text.push_str(&line_str);
-                selected_text.push('\n');
-            }
-        }
-
-        Some(selected_text)
+        self.grid.advance_bytes(bytes.as_ref());
     }
 
     #[must_use]
     pub fn update(&mut self, message: Message) -> Action {
         match message.0 {
             InnerMessage::Resize(size) => {
-                if self.term.get_size() != size {
-                    self.term.resize(size.clone());
-                    Action::Resize(size)
-                } else {
-                    Action::None
-                }
+                self.grid.resize(size);
+                Action::Resize(size)
             }
             InnerMessage::KeyPress {
                 modified_key,
@@ -407,66 +258,51 @@ impl Terminal {
                     return self.copy();
                 }
 
-                if let Some((key, modifiers)) = transform_key(modified_key, modifiers) {
-                    self.term.key_down(key, modifiers).unwrap();
-                    self.scroll_pos = 0;
-                    self.update_formatted_rows(false);
+                if let Some(input) = self.grid.press_key(modified_key, modifiers) {
+                    Action::Input(input)
+                } else {
+                    Action::None
                 }
-
-                Action::None
             }
-            InnerMessage::Input(input) => Action::Input(input),
             InnerMessage::Paste(paste) => {
                 if let Some(paste) = paste {
-                    self.term.send_paste(&paste).unwrap();
-                    self.scroll_pos = 0;
-                    self.update_formatted_rows(false);
+                    Action::Input(self.grid.paste(&paste))
+                } else {
+                    Action::None
                 }
-                Action::None
             }
             InnerMessage::Scrolled(scrolled) => {
                 match scrolled {
                     ScrollDelta::Lines { y, .. } => {
                         if y >= 0.0 {
-                            self.scroll_pos += y as usize
+                            self.grid.scroll_up(y as usize);
                         } else {
-                            self.scroll_pos = self.scroll_pos.saturating_sub(-y as usize);
+                            self.grid.scroll_down((-y) as usize);
                         }
                     }
                     ScrollDelta::Pixels { y, .. } => {
                         if y >= 0.0 {
-                            self.scroll_pos += y as usize
+                            self.grid.scroll_up(y as usize);
                         } else {
-                            self.scroll_pos = self.scroll_pos.saturating_sub(-y as usize);
+                            self.grid.scroll_down((-y) as usize);
                         }
                     }
                 };
-
-                let force_redraw = match self.selection_state {
-                    SelectionState::None => false,
-                    SelectionState::Selecting { .. } => true,
-                    SelectionState::Selected { .. } => false,
-                };
-
-                self.update_formatted_rows(force_redraw);
 
                 Action::None
             }
             InnerMessage::StartSelection(position) => {
                 self.selection_state.start(self.pos_conversion(position));
-                self.update_formatted_rows(true);
                 Action::None
             }
             InnerMessage::MoveSelection(position) => {
                 self.selection_state
                     .move_mouse(self.pos_conversion(position));
-                self.update_formatted_rows(true);
 
                 Action::None
             }
             InnerMessage::EndSelection => {
                 self.selection_state.stop();
-                self.update_formatted_rows(true);
                 Action::None
             }
             InnerMessage::ShowContextMenu(position) => {
@@ -490,11 +326,11 @@ impl Terminal {
     }
 
     fn copy(&self) -> Action {
-        if let Some(selected_text) = self.get_selected_text() {
-            Action::Run(iced::clipboard::write(selected_text).chain(self.focus()))
-        } else {
-            Action::None
-        }
+        // if let Some(selected_text) = self.get_selected_text() {
+        //     Action::Run(iced::clipboard::write(selected_text).chain(self.focus()))
+        // } else {
+        Action::None
+        // }
     }
 
     fn paste(&self) -> Action {
@@ -507,116 +343,9 @@ impl Terminal {
     }
 
     fn pos_conversion(&self, position: GridPosition) -> SelectionPosition {
-        let horizontal_offset =
-            self.term.screen().scrollback_rows() - self.term.get_size().rows - self.scroll_pos;
-        position.into_selection_position(horizontal_offset)
-    }
-
-    // Helper to update the current iced text representation from the current wezterm data
-    fn update_formatted_rows(&mut self, force: bool) {
-        self.cursor_pos = self.term.cursor_pos();
-
-        if force {
-            self.term.increment_seqno();
-        }
-
-        let screen = self.term.screen();
-        let max_scroll = screen
-            .scrollback_rows()
-            .saturating_sub(self.term.get_size().rows);
-
-        // This usually only happens on a `clear` command
-        if self.scroll_pos > max_scroll {
-            self.scroll_pos = max_scroll;
-        }
-
-        if self.needs_row_update() || force {
-            self.last_span_update = self.term.current_seqno();
-            self.last_span_update_scroll_pos = self.scroll_pos;
-
-            let visible_rows_end = screen.scrollback_rows().saturating_sub(self.scroll_pos);
-            let visible_rows_start = visible_rows_end.saturating_sub(screen.physical_rows);
-            let visible_range = visible_rows_start..visible_rows_end;
-
-            let term_lines = screen.lines_in_phys_range(visible_range);
-
-            let mut is_current_selected = false;
-            let range_start = visible_rows_end.saturating_sub(screen.physical_rows);
-            let mut absolute_line = range_start;
-
-            // Remove or add rows at the top
-            if self.first_row_scrollback_pos > range_start {
-                for _ in range_start..self.first_row_scrollback_pos {
-                    self.formatted_rows.push_front(FormattedRow::default());
-                }
-            } else if self.first_row_scrollback_pos < range_start {
-                for _ in self.first_row_scrollback_pos..range_start {
-                    self.formatted_rows.pop_front();
-                }
-            }
-            self.first_row_scrollback_pos = range_start;
-
-            // Remove or add rows at the bottom
-            while self.formatted_rows.len() < screen.physical_rows {
-                self.formatted_rows.push_back(FormattedRow::default());
-            }
-            while self.formatted_rows.len() > screen.physical_rows {
-                self.formatted_rows.pop_back();
-            }
-
-            for (line, formatted_row) in term_lines.iter().zip(self.formatted_rows.iter_mut()) {
-                let mut current_col_idx = 0;
-
-                let mut current_text = String::new();
-                let mut current_attrs = CellAttributes::default();
-
-                if line.current_seqno() != formatted_row.last_update_seqno || force {
-                    formatted_row.last_update_seqno = self.term.current_seqno();
-                    formatted_row.spans.clear();
-
-                    for cell in line.visible_cells() {
-                        let char_pos = SelectionPosition {
-                            x: current_col_idx,
-                            y: absolute_line,
-                        };
-
-                        let is_selected = self.selection_state.is_position_selected(char_pos);
-
-                        // Check if we need to break the span due to attribute changes or selection changes
-                        if cell.attrs() != &current_attrs || is_selected != is_current_selected {
-                            Self::push_span(
-                                &self.style,
-                                &mut formatted_row.spans,
-                                current_text,
-                                current_attrs,
-                                is_current_selected,
-                            );
-                            current_attrs = cell.attrs().clone();
-                            is_current_selected = is_selected;
-                            current_text = String::new();
-                        }
-
-                        current_text.push_str(cell.str());
-                        current_col_idx += 1;
-                    }
-
-                    Self::push_span(
-                        &self.style,
-                        &mut formatted_row.spans,
-                        current_text,
-                        current_attrs,
-                        is_current_selected,
-                    );
-
-                    absolute_line += 1;
-                }
-            }
-        }
-    }
-
-    fn needs_row_update(&self) -> bool {
-        self.last_span_update != self.term.current_seqno()
-            || self.scroll_pos != self.last_span_update_scroll_pos
+        // let horizontal_offset =
+        //     self.grid.screen().scrollback_rows() - self.grid.get_size().rows - self.scroll_pos;
+        position.into_selection_position(0)
     }
 
     pub fn view<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, Message, Theme, Renderer>
@@ -644,7 +373,7 @@ impl Terminal {
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
     {
-        let terminal_widget = iced::Element::new(TerminalWidget::new(self, self.style.font));
+        let terminal_widget = iced::Element::new(TerminalWidget::new(self));
 
         if let Some(position) = self.context_menu_position {
             let copy_button = iced::widget::button(iced::widget::text("Copy").size(14))
@@ -724,93 +453,6 @@ impl Terminal {
     }
 }
 
-fn transform_key(
-    key: iced::keyboard::Key,
-    modifiers: iced::keyboard::Modifiers,
-) -> Option<(wezterm_term::KeyCode, wezterm_term::KeyModifiers)> {
-    let wez_key = match key {
-        iced::keyboard::Key::Character(c) => {
-            let c = c.chars().next().unwrap();
-            Some(wezterm_term::KeyCode::Char(c))
-        }
-        iced::keyboard::Key::Named(named) => match named {
-            iced::keyboard::key::Named::Enter => Some(wezterm_term::KeyCode::Enter),
-            iced::keyboard::key::Named::Space => Some(wezterm_term::KeyCode::Char(' ')),
-            iced::keyboard::key::Named::Backspace => Some(wezterm_term::KeyCode::Backspace),
-            iced::keyboard::key::Named::Delete => Some(wezterm_term::KeyCode::Delete),
-            iced::keyboard::key::Named::ArrowLeft => Some(wezterm_term::KeyCode::LeftArrow),
-            iced::keyboard::key::Named::ArrowRight => Some(wezterm_term::KeyCode::RightArrow),
-            iced::keyboard::key::Named::ArrowUp => Some(wezterm_term::KeyCode::UpArrow),
-            iced::keyboard::key::Named::ArrowDown => Some(wezterm_term::KeyCode::DownArrow),
-            iced::keyboard::key::Named::Tab => Some(wezterm_term::KeyCode::Tab),
-            iced::keyboard::key::Named::Escape => Some(wezterm_term::KeyCode::Escape),
-            iced::keyboard::key::Named::Home => Some(wezterm_term::KeyCode::Home),
-            iced::keyboard::key::Named::End => Some(wezterm_term::KeyCode::End),
-            iced::keyboard::key::Named::PageUp => Some(wezterm_term::KeyCode::PageUp),
-            iced::keyboard::key::Named::PageDown => Some(wezterm_term::KeyCode::PageDown),
-            iced::keyboard::key::Named::F1 => Some(wezterm_term::KeyCode::Function(1)),
-            iced::keyboard::key::Named::F2 => Some(wezterm_term::KeyCode::Function(2)),
-            iced::keyboard::key::Named::F3 => Some(wezterm_term::KeyCode::Function(3)),
-            iced::keyboard::key::Named::F4 => Some(wezterm_term::KeyCode::Function(4)),
-            iced::keyboard::key::Named::F5 => Some(wezterm_term::KeyCode::Function(5)),
-            iced::keyboard::key::Named::F6 => Some(wezterm_term::KeyCode::Function(6)),
-            iced::keyboard::key::Named::F7 => Some(wezterm_term::KeyCode::Function(7)),
-            iced::keyboard::key::Named::F8 => Some(wezterm_term::KeyCode::Function(8)),
-            iced::keyboard::key::Named::F9 => Some(wezterm_term::KeyCode::Function(9)),
-            iced::keyboard::key::Named::F10 => Some(wezterm_term::KeyCode::Function(10)),
-            iced::keyboard::key::Named::F11 => Some(wezterm_term::KeyCode::Function(11)),
-            iced::keyboard::key::Named::F12 => Some(wezterm_term::KeyCode::Function(12)),
-            iced::keyboard::key::Named::F13 => Some(wezterm_term::KeyCode::Function(13)),
-            iced::keyboard::key::Named::F14 => Some(wezterm_term::KeyCode::Function(14)),
-            iced::keyboard::key::Named::F15 => Some(wezterm_term::KeyCode::Function(15)),
-            iced::keyboard::key::Named::F16 => Some(wezterm_term::KeyCode::Function(16)),
-            iced::keyboard::key::Named::F17 => Some(wezterm_term::KeyCode::Function(17)),
-            iced::keyboard::key::Named::F18 => Some(wezterm_term::KeyCode::Function(18)),
-            iced::keyboard::key::Named::F19 => Some(wezterm_term::KeyCode::Function(19)),
-            iced::keyboard::key::Named::F20 => Some(wezterm_term::KeyCode::Function(20)),
-            iced::keyboard::key::Named::F21 => Some(wezterm_term::KeyCode::Function(21)),
-            iced::keyboard::key::Named::F22 => Some(wezterm_term::KeyCode::Function(22)),
-            iced::keyboard::key::Named::F23 => Some(wezterm_term::KeyCode::Function(23)),
-            iced::keyboard::key::Named::F24 => Some(wezterm_term::KeyCode::Function(24)),
-            iced::keyboard::key::Named::F25 => Some(wezterm_term::KeyCode::Function(25)),
-            iced::keyboard::key::Named::F26 => Some(wezterm_term::KeyCode::Function(26)),
-            iced::keyboard::key::Named::F27 => Some(wezterm_term::KeyCode::Function(27)),
-            iced::keyboard::key::Named::F28 => Some(wezterm_term::KeyCode::Function(28)),
-            iced::keyboard::key::Named::F29 => Some(wezterm_term::KeyCode::Function(29)),
-            iced::keyboard::key::Named::F30 => Some(wezterm_term::KeyCode::Function(30)),
-            iced::keyboard::key::Named::F31 => Some(wezterm_term::KeyCode::Function(31)),
-            iced::keyboard::key::Named::F32 => Some(wezterm_term::KeyCode::Function(32)),
-            iced::keyboard::key::Named::F33 => Some(wezterm_term::KeyCode::Function(33)),
-            iced::keyboard::key::Named::F34 => Some(wezterm_term::KeyCode::Function(34)),
-            iced::keyboard::key::Named::F35 => Some(wezterm_term::KeyCode::Function(35)),
-            _ => None,
-        },
-        _ => None,
-    };
-
-    match wez_key {
-        None => None,
-        Some(key) => {
-            let mut wez_modifiers = wezterm_term::KeyModifiers::empty();
-
-            if modifiers.shift() {
-                wez_modifiers |= wezterm_term::KeyModifiers::SHIFT;
-            }
-            if modifiers.alt() {
-                wez_modifiers |= wezterm_term::KeyModifiers::ALT;
-            }
-            if modifiers.control() {
-                wez_modifiers |= wezterm_term::KeyModifiers::CTRL;
-            }
-            if modifiers.logo() {
-                wez_modifiers |= wezterm_term::KeyModifiers::SUPER;
-            }
-
-            Some((key, wez_modifiers))
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Id(iced::advanced::widget::Id);
 
@@ -846,15 +488,13 @@ impl From<String> for Id {
     }
 }
 
-struct TerminalWidget<'a, R: iced::advanced::text::Renderer> {
+struct TerminalWidget<'a> {
     term: &'a Terminal,
-    font: R::Font,
 }
 
 struct State<R: iced::advanced::text::Renderer> {
+    prerenderer: WeztermPreRenderer<R>,
     focused: bool,
-    first_row_scrollback_pos: usize,
-    rows: VecDeque<ParagraphRow<R>>,
     last_cursor_blink: Instant,
     cursor_blink_currently_shown: bool,
     now: Instant,
@@ -892,7 +532,7 @@ where
 }
 
 impl<Theme, Renderer> iced::advanced::widget::Widget<InnerMessage, Theme, Renderer>
-    for TerminalWidget<'_, Renderer>
+    for TerminalWidget<'_>
 where
     Renderer: iced::advanced::text::Renderer<Font = iced::Font>,
     Renderer: 'static,
@@ -903,9 +543,8 @@ where
 
     fn state(&self) -> iced::advanced::widget::tree::State {
         iced::advanced::widget::tree::State::new(State::<Renderer> {
+            prerenderer: WeztermPreRenderer::new(self.term.style.clone()),
             focused: false,
-            rows: VecDeque::new(),
-            first_row_scrollback_pos: 0,
             last_cursor_blink: Instant::now(),
             cursor_blink_currently_shown: false,
             now: Instant::now(),
@@ -947,9 +586,6 @@ where
             iced::Event::Window(iced::window::Event::RedrawRequested(now)) => {
                 let state = state.state.downcast_mut::<State<Renderer>>();
 
-                let term = &self.term.term;
-                let screen = term.screen();
-
                 let widget_width = layout.bounds().width - self.term.style.padding.horizontal();
                 let widget_height = layout.bounds().height - self.term.style.padding.vertical();
 
@@ -978,17 +614,14 @@ where
 
                     let target_line_count = (0.77 * widget_height / line_height) as usize;
                     let target_col_count = (widget_width / char_width) as usize;
+                    let size = self.term.grid.get_size();
 
-                    if screen.physical_rows != target_line_count
-                        || screen.physical_cols != target_col_count
-                    {
-                        let size = TerminalSize {
-                            rows: target_line_count,
+                    if size.rows != target_line_count || size.cols != target_col_count {
+                        let size = crate::terminal_grid::Size {
                             cols: target_col_count,
-                            pixel_height: widget_height as usize,
-                            pixel_width: widget_width as usize,
-                            ..Default::default()
+                            rows: target_line_count,
                         };
+                        println!("Resizing terminal to {:?}", size);
                         shell.publish(InnerMessage::Resize(size));
                     }
                 }
@@ -1061,12 +694,12 @@ where
                     if let Some(char_pos) =
                         self.screen_to_grid_position(*position, layout, renderer)
                     {
-                        let horizontal_offset = self.term.term.screen().scrollback_rows()
-                            - self.term.term.get_size().rows
-                            - self.term.scroll_pos;
-                        if &char_pos.into_selection_position(horizontal_offset) != current {
-                            shell.publish(InnerMessage::MoveSelection(char_pos));
-                        }
+                        // let horizontal_offset = self.term.grid.screen().scrollback_rows()
+                        //     - self.term.grid.get_size().rows
+                        //     - self.term.scroll_pos;
+                        // if &char_pos.into_selection_position(horizontal_offset) != current {
+                        //     shell.publish(InnerMessage::MoveSelection(char_pos));
+                        // }
                     }
                     shell.capture_event();
                 }
@@ -1133,62 +766,7 @@ where
     ) -> iced::advanced::layout::Node {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
-        // Add or remove rows from the front
-        if state.first_row_scrollback_pos > self.term.first_row_scrollback_pos {
-            for _ in self.term.first_row_scrollback_pos..state.first_row_scrollback_pos {
-                state.rows.push_front(ParagraphRow {
-                    last_layout_seqno: 0,
-                    paragraph: Renderer::Paragraph::default(),
-                });
-            }
-        } else if state.first_row_scrollback_pos < self.term.first_row_scrollback_pos {
-            for _ in state.first_row_scrollback_pos..self.term.first_row_scrollback_pos {
-                state.rows.pop_front();
-            }
-        }
-        state.first_row_scrollback_pos = self.term.first_row_scrollback_pos;
-
-        while state.rows.len() < self.term.formatted_rows.len() {
-            state.rows.push_back(ParagraphRow {
-                last_layout_seqno: 0,
-                paragraph: Renderer::Paragraph::default(),
-            });
-        }
-        while state.rows.len() > self.term.formatted_rows.len() {
-            state.rows.pop_back();
-        }
-
-        let text_size = self
-            .term
-            .style
-            .text_size
-            .unwrap_or_else(|| renderer.default_size());
-
-        for (paragraph_row, formatted_row) in
-            state.rows.iter_mut().zip(self.term.formatted_rows.iter())
-        {
-            if paragraph_row.last_layout_seqno == formatted_row.last_update_seqno {
-                continue;
-            }
-            paragraph_row.last_layout_seqno = formatted_row.last_update_seqno;
-
-            let text = iced::advanced::Text {
-                content: formatted_row.spans.as_ref(),
-                bounds: iced::Size::new(
-                    limits.max().width,
-                    self.term.style.line_height.to_absolute(text_size).0,
-                ),
-                size: text_size,
-                line_height: iced::advanced::text::LineHeight::default(),
-                font: self.font,
-                align_x: iced::advanced::text::Alignment::Left,
-                align_y: iced::alignment::Vertical::Top,
-                shaping: iced::widget::text::Shaping::Advanced,
-                wrapping: iced::widget::text::Wrapping::None,
-            };
-
-            paragraph_row.paragraph = iced::advanced::text::Paragraph::with_spans(text);
-        }
+        state.prerenderer.update(&self.term.grid, renderer);
 
         iced::advanced::layout::Node::new(limits.max())
     }
@@ -1230,16 +808,10 @@ where
         let y_multiplier = self.term.style.line_height.to_absolute(size).0;
 
         // drawing text background
-        for (row_index, (paragraph_row, formatted_row)) in state
-            .rows
-            .iter()
-            .zip(self.term.formatted_rows.iter())
-            .enumerate()
-        {
-            let paragraph = &paragraph_row.paragraph;
+        for (row_index, (paragraph, spans)) in state.prerenderer.visible_rows().enumerate() {
             let y_offset = y_multiplier * row_index as f32;
 
-            for (index, span) in formatted_row.spans.iter().enumerate() {
+            for (index, span) in spans.iter().enumerate() {
                 if let Some(highlight) = span.highlight {
                     let regions = paragraph.span_bounds(index);
 
@@ -1277,15 +849,9 @@ where
     }
 }
 
-impl<'a, R> TerminalWidget<'a, R>
-where
-    R: iced::advanced::text::Renderer,
-{
-    pub fn new(term: &'a Terminal, font: impl Into<R::Font>) -> Self {
-        Self {
-            term,
-            font: font.into(),
-        }
+impl<'a> TerminalWidget<'a> {
+    pub fn new(term: &'a Terminal) -> Self {
+        Self { term }
     }
 
     fn screen_to_grid_position<Renderer>(
@@ -1340,25 +906,22 @@ where
     ) where
         Renderer: iced::advanced::text::Renderer,
     {
-        if !state.cursor_blink_currently_shown
-            || self.term.cursor_pos.visibility == CursorVisibility::Hidden
-        {
+        let cursor = self.term.grid.get_cursor();
+        if !state.cursor_blink_currently_shown || !cursor.visible {
             return;
         }
-
-        let screen = self.term.term.screen();
 
         // Calculate the scroll-adjusted cursor position using your custom scroll system
         // The cursor position is absolute, but we need to adjust it by the scroll offset
-        let cursor_absolute_y = self.term.cursor_pos.y as i64;
-        let scroll_offset = self.term.scroll_pos as i64;
+        let cursor_absolute_y = cursor.y as i64;
+        let scroll_offset = 0 as i64;
         let visible_cursor_y = cursor_absolute_y + scroll_offset;
 
-        // Check if cursor is within the visible area
-        if visible_cursor_y < 0 || visible_cursor_y >= screen.physical_rows as i64 {
-            // Cursor is outside the visible area due to scrolling
-            return;
-        }
+        // // Check if cursor is within the visible area
+        // if visible_cursor_y < 0 || visible_cursor_y >= screen.physical_rows as i64 {
+        //     // Cursor is outside the visible area due to scrolling
+        //     return;
+        // }
 
         // Calculate character dimensions
         let text_size = self
@@ -1372,29 +935,27 @@ where
         let char_width = text_size * CHAR_WIDTH;
 
         let base_cursor_position = iced::Point::new(
-            self.term.cursor_pos.x as f32 * char_width,
+            cursor.x as f32 * char_width,
             visible_cursor_y as f32 * line_height,
         );
 
         let padding = 1.0;
 
-        let cursor_bounds = match self.term.cursor_pos.shape {
-            CursorShape::BlinkingUnderline
-            | CursorShape::SteadyUnderline
-            | CursorShape::Default => iced::Rectangle::new(
+        let cursor_bounds = match self.term.style.cursor_shape {
+            CursorShape::Underline => iced::Rectangle::new(
                 base_cursor_position
                     + translation
                     + iced::Vector::new(0.0, renderer.default_size().0 * 1.2),
                 iced::Size::new(renderer.default_size().0 * CHAR_WIDTH, 1.0),
             ),
-            CursorShape::BlinkingBlock | CursorShape::SteadyBlock => iced::Rectangle::new(
+            CursorShape::Block => iced::Rectangle::new(
                 base_cursor_position + translation + iced::Vector::new(padding, padding),
                 iced::Size::new(
                     renderer.default_size().0 * CHAR_WIDTH - padding,
                     renderer.default_size().0 * 1.3 - padding,
                 ),
             ),
-            CursorShape::BlinkingBar | CursorShape::SteadyBar => iced::Rectangle::new(
+            CursorShape::Bar => iced::Rectangle::new(
                 base_cursor_position + translation + iced::Vector::new(padding, padding),
                 iced::Size::new(1.0, renderer.default_size().0 * 1.3 - padding),
             ),

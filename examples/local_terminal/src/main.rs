@@ -1,4 +1,4 @@
-use frozen_term::local_terminal::{self, LocalTerminal};
+use frozen_term::local_terminal2::{self as local_terminal, LocalTerminal};
 use iced::Task;
 
 pub fn main() {
