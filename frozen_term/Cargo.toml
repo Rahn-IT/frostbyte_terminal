@@ -6,7 +6,7 @@ license = "MIT"
 description = "A terminal emulator to embed into your iced application - includes demo app"
 
 [dependencies]
-iced = { package = "iced", git = "https://github.com/iced-rs/iced.git", features = [
+iced = { git = "https://github.com/iced-rs/iced.git", features = [
     "advanced",
     "tokio",
     "sipper",
