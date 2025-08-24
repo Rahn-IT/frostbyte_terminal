@@ -13,6 +13,7 @@ pub struct Style {
     pub background_color: iced::Color,
     pub foreground_color: iced::Color,
     pub font: iced::Font,
+    pub cursor_shape: CursorShape,
     /// This value is used to set the height of the background for the text.
     /// If you use a custom font, you might have to experiment which value works best for your font.
     // pub font_height_modifier: f32,
@@ -20,6 +21,13 @@ pub struct Style {
 }
 
 pub struct Palette256(pub [iced::Color; 256]);
+
+#[derive(Debug, Clone, Copy)]
+pub enum CursorShape {
+    Block,
+    Underline,
+    Bar,
+}
 
 impl Palette256 {
     fn from_wezterm(palette: wezterm_term::color::Palette256) -> Self {
@@ -47,6 +55,7 @@ const DEFAULT_STYLE: LazyCell<Style> = LazyCell::new(|| {
         line_height: iced::widget::text::LineHeight::default(),
         text_size: None,
         padding: Padding::new(10.0),
+        cursor_shape: CursorShape::Underline,
         background_color,
         foreground_color,
         font: iced::Font::MONOSPACE,
@@ -97,17 +106,12 @@ impl Style {
         self
     }
 
-    pub(crate) fn get_foreground_color(&self, color: ColorAttribute) -> iced::Color {
-        self.get_color(color)
-            .unwrap_or_else(|| self.foreground_color)
+    pub fn cursor_shape(mut self, shape: CursorShape) -> Self {
+        self.cursor_shape = shape;
+        self
     }
 
-    pub(crate) fn get_background_color(&self, color: ColorAttribute) -> iced::Color {
-        self.get_color(color)
-            .unwrap_or_else(|| self.background_color)
-    }
-
-    fn get_color(&self, color: ColorAttribute) -> Option<iced::Color> {
+    pub(crate) fn get_color(&self, color: ColorAttribute) -> Option<iced::Color> {
         match color {
             ColorAttribute::TrueColorWithPaletteFallback(srgba_tuple, _)
             | ColorAttribute::TrueColorWithDefaultFallback(srgba_tuple) => {
