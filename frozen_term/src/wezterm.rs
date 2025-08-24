@@ -107,6 +107,7 @@ impl TerminalGrid for WeztermGrid {
                 )
                 .ok()
             {
+                self.scroll_offset = self.max_scroll();
                 Some(encoded.into_bytes())
             } else {
                 None
