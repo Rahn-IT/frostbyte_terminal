@@ -16,7 +16,7 @@ pub trait TerminalGrid {
 
     fn get_title(&self) -> &str;
     fn get_size(&self) -> Size;
-    fn get_cursor(&self) -> Cursor;
+    fn get_cursor(&self) -> Option<Cursor>;
 }
 
 pub trait PreRenderer<R>
@@ -29,7 +29,7 @@ where
     fn update(&mut self, grid: &Self::Grid, renderer: &R);
     fn visible_rows<'a>(
         &'a self,
-    ) -> impl Iterator<Item = (&'a R::Paragraph, &'a [text::Span<'a, (), R::Font>])>;
+    ) -> impl Iterator<Item = Option<(&'a R::Paragraph, &'a [text::Span<'a, (), R::Font>])>>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -42,5 +42,4 @@ pub struct Size {
 pub struct Cursor {
     pub x: usize,
     pub y: usize,
-    pub visible: bool,
 }

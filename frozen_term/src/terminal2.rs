@@ -621,7 +621,6 @@ where
                             cols: target_col_count,
                             rows: target_line_count,
                         };
-                        println!("Resizing terminal to {:?}", size);
                         shell.publish(InnerMessage::Resize(size));
                     }
                 }
@@ -808,7 +807,10 @@ where
         let y_multiplier = self.term.style.line_height.to_absolute(size).0;
 
         // drawing text background
-        for (row_index, (paragraph, spans)) in state.prerenderer.visible_rows().enumerate() {
+        for (row_index, render_data) in state.prerenderer.visible_rows().enumerate() {
+            let Some((paragraph, spans)) = render_data else {
+                continue;
+            };
             let y_offset = y_multiplier * row_index as f32;
 
             for (index, span) in spans.iter().enumerate() {
@@ -906,8 +908,10 @@ impl<'a> TerminalWidget<'a> {
     ) where
         Renderer: iced::advanced::text::Renderer,
     {
-        let cursor = self.term.grid.get_cursor();
-        if !state.cursor_blink_currently_shown || !cursor.visible {
+        let Some(cursor) = self.term.grid.get_cursor() else {
+            return;
+        };
+        if !state.cursor_blink_currently_shown {
             return;
         }
 

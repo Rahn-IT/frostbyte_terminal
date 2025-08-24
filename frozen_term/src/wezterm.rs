@@ -75,14 +75,21 @@ impl TerminalGrid for WeztermGrid {
     }
 
     fn resize(&mut self, size: Size) {
-        println!("resizing to {:?}", size);
+        let diff = self.size.rows.abs_diff(size.rows);
+
+        let new_scroll = if size.rows > self.size.rows {
+            self.scroll_offset - diff
+        } else {
+            self.scroll_offset + diff
+        };
+
         self.terminal.resize(TerminalSize {
             cols: size.cols,
             rows: size.rows,
             ..Default::default()
         });
         self.size = size;
-        self.scroll_offset = self.scroll_offset.min(self.max_scroll());
+        self.scroll_offset = new_scroll.min(self.max_scroll());
     }
 
     fn press_key(
@@ -143,12 +150,15 @@ impl TerminalGrid for WeztermGrid {
         self.size
     }
 
-    fn get_cursor(&self) -> Cursor {
+    fn get_cursor(&self) -> Option<Cursor> {
+        let cursor_offset = self.max_scroll() - self.scroll_offset;
         let pos = self.terminal.cursor_pos();
-        Cursor {
-            x: pos.x,
-            y: pos.y as usize,
-            visible: pos.visibility == CursorVisibility::Visible,
+        let y = (pos.y as usize) + cursor_offset;
+
+        if y < self.size.rows || pos.visibility == CursorVisibility::Visible {
+            Some(Cursor { x: pos.x, y })
+        } else {
+            None
         }
     }
 }
