@@ -30,14 +30,13 @@ where
     type Grid = WeztermGrid;
 
     fn update(&mut self, grid: &Self::Grid, renderer: &R) {
+        let prerender = iced::debug::time("prerender");
         let screen = grid.terminal.screen();
 
-        println!(
-            "Rows: {:?}, Columns: {:?}",
-            screen.physical_rows, screen.physical_cols
-        );
-
-        let range = grid.scroll_offset..grid.scroll_offset + screen.physical_rows;
+        let range = grid.scroll_offset
+            ..screen
+                .scrollback_rows()
+                .min(grid.scroll_offset + screen.physical_rows);
         self.visible_range = range.clone();
 
         let text_size = self
@@ -47,10 +46,10 @@ where
 
         let font: R::Font = self.style.font.into();
 
-        println!("Range: {:?}", range);
-
+        let line_span = iced::debug::time("lines");
         screen.with_phys_lines(range.clone(), |lines| {
             for (offset, line) in lines.iter().enumerate() {
+                let prepare = iced::debug::time("prepare");
                 let index = range.start + offset;
 
                 while self.rows.len() <= index {
@@ -65,52 +64,70 @@ where
                     }
                 }
 
+                prepare.finish();
+                let span = iced::debug::time("span creation");
                 let mut current_text = String::new();
                 let mut current_attrs = CellAttributes::default();
                 let mut spans: Vec<Span<(), R::Font>> = Vec::new();
+                let mut needs_advanced = false;
 
                 for cell in line.visible_cells() {
                     if cell.attrs() != &current_attrs {
-                        // println!("Pushing span with attributes: {:?}", current_attrs);
                         push_span(&self.style, &mut spans, current_text, current_attrs);
                         current_attrs = cell.attrs().clone();
                         current_text = String::new();
                     }
-                    current_text.push_str(cell.str());
+                    let cell_str = cell.str();
+                    if !cell_str.is_ascii() {
+                        needs_advanced = true;
+                    }
+                    current_text.push_str(cell_str);
                 }
-                push_span(&self.style, &mut spans, current_text, current_attrs);
-                let text = iced::advanced::Text {
-                    content: spans.as_slice(),
-                    bounds: iced::Size::INFINITE,
-                    size: text_size,
-                    line_height: iced::advanced::text::LineHeight::default(),
-                    font: font,
-                    align_x: iced::advanced::text::Alignment::Left,
-                    align_y: iced::alignment::Vertical::Top,
-                    shaping: iced::widget::text::Shaping::Advanced,
-                    wrapping: iced::widget::text::Wrapping::None,
-                };
 
-                let paragraph = iced::advanced::text::Paragraph::with_spans(text);
-                let row = ParagraphRow {
-                    paragraph,
-                    spans,
-                    last_update_seqno: line.current_seqno(),
+                push_span(&self.style, &mut spans, current_text, current_attrs);
+                span.finish();
+
+                let span = iced::debug::time("text layout");
+                let shaping = if needs_advanced {
+                    iced::widget::text::Shaping::Advanced
+                } else {
+                    iced::widget::text::Shaping::Basic
                 };
-                if !row.spans.is_empty() {
-                    println!("Updating row: {:?}", row);
-                }
-                *self.rows.get_mut(index).unwrap() = Some(row);
+                let row = if !spans.is_empty() {
+                    let text = iced::advanced::Text {
+                        content: spans.as_slice(),
+                        bounds: iced::Size::INFINITE,
+                        size: text_size,
+                        line_height: iced::advanced::text::LineHeight::default(),
+                        font: font,
+                        align_x: iced::advanced::text::Alignment::Left,
+                        align_y: iced::alignment::Vertical::Top,
+                        shaping,
+                        wrapping: iced::widget::text::Wrapping::None,
+                    };
+                    let paragraph = iced::advanced::text::Paragraph::with_spans(text);
+                    Some(ParagraphRow {
+                        paragraph,
+                        spans,
+                        last_update_seqno: line.current_seqno(),
+                    })
+                } else {
+                    None
+                };
+                span.finish();
+                *self.rows.get_mut(index).unwrap() = row;
             }
         });
+        line_span.finish();
+        prerender.finish();
     }
 
     fn visible_rows<'a>(
         &'a self,
-    ) -> impl Iterator<Item = (&'a R::Paragraph, &'a [text::Span<'a, (), R::Font>])> {
+    ) -> impl Iterator<Item = Option<(&'a R::Paragraph, &'a [text::Span<'a, (), R::Font>])>> {
         self.rows.range(self.visible_range.clone()).map(|row| {
-            let row = row.as_ref().unwrap();
-            (&row.paragraph, row.spans.as_slice())
+            row.as_ref()
+                .map(|row| (&row.paragraph, row.spans.as_slice()))
         })
     }
 }
@@ -121,30 +138,30 @@ fn push_span<Font>(
     text: String,
     attributes: CellAttributes,
 ) {
+    if text.is_empty() {
+        return;
+    }
+
     let mut background = style.get_color(attributes.background());
     let mut foreground = style.get_color(attributes.foreground());
 
-    if !text.is_empty() {
-        // Apply reverse colors for original cell attributes
-        if attributes.reverse() {
-            (background, foreground) = (foreground, background);
-            if foreground.is_none() {
-                foreground = Some(style.background_color)
-            }
-            if background.is_none() {
-                background = Some(style.foreground_color)
-            }
+    // Apply reverse colors for original cell attributes
+    if attributes.reverse() {
+        (background, foreground) = (foreground, background);
+        if foreground.is_none() {
+            foreground = Some(style.background_color)
         }
-
-        let span = iced::advanced::text::Span::new(text)
-            .color_maybe(foreground)
-            .background_maybe(background)
-            .underline(attributes.underline() != Underline::None);
-
-        spans.push(span);
-    } else {
-        // println!("Span is empty");
+        if background.is_none() {
+            background = Some(style.foreground_color)
+        }
     }
+
+    let span = iced::advanced::text::Span::new(text)
+        .color_maybe(foreground)
+        .background_maybe(background)
+        .underline(attributes.underline() != Underline::None);
+
+    spans.push(span);
 }
 
 pub struct ParagraphRow<R: text::Renderer> {

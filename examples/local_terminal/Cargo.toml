@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 frozen_term = { path = "../../frozen_term", features = ["local-terminal"] }
-iced = { git = "https://github.com/iced-rs/iced.git" }
+iced = { git = "https://github.com/iced-rs/iced.git", features = ["debug"] }
