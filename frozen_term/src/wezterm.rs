@@ -77,23 +77,34 @@ impl WeztermGrid {
         )
     }
 
-    fn invalidate_lines(&mut self, invalidate: Range<PhysRowIndex>) {
+    fn invalidate_lines(&mut self, mut invalidate: Range<PhysRowIndex>) {
         self.terminal.increment_seqno();
         let seqno = self.terminal.current_seqno();
-        self.terminal
-            .screen_mut()
-            .with_phys_lines_mut(invalidate, |lines| {
-                for line in lines {
-                    line.update_last_change_seqno(seqno);
-                }
-            });
+        invalidate.start = invalidate.start.max(self.min_scroll());
+        invalidate.end = invalidate
+            .end
+            .min(self.max_scroll() + self.terminal.screen().physical_rows);
+
+        let screen = self.terminal.screen_mut();
+        let invalidate = screen.stable_range(&(invalidate.start as isize..invalidate.end as isize));
+        screen.with_phys_lines_mut(invalidate, |lines| {
+            for line in lines {
+                line.update_last_change_seqno(seqno);
+            }
+        });
+    }
+
+    fn min_scroll(&self) -> usize {
+        let screen = self.terminal.screen();
+        let max_stable_index =
+            screen.phys_to_stable_row_index(screen.scrollback_rows() - 1) as usize;
+        max_stable_index.saturating_sub(screen.scrollback_rows())
     }
 
     fn max_scroll(&self) -> usize {
         let screen = self.terminal.screen();
-        screen
-            .scrollback_rows()
-            .saturating_sub(screen.physical_rows)
+        let max_stable_index = screen.phys_to_stable_row_index(screen.scrollback_rows()) as usize;
+        max_stable_index.saturating_sub(screen.physical_rows)
     }
 
     fn inverse_offset(&self) -> usize {
@@ -101,10 +112,16 @@ impl WeztermGrid {
     }
 
     fn update_scroll(&mut self, new_offset: usize) {
-        self.scroll_offset = new_offset.min(self.max_scroll());
+        self.scroll_offset = new_offset.min(self.max_scroll()).max(self.min_scroll());
         if let Some(invalidate) = self.selection.set_scroll(self.scroll_offset) {
             self.invalidate_lines(invalidate);
         }
+    }
+
+    fn screen_lines(&self, range: Range<usize>) -> Vec<wezterm_term::Line> {
+        let screen = self.terminal.screen();
+        let range = screen.stable_range(&(range.start as isize..range.end as isize));
+        screen.lines_in_phys_range(range)
     }
 }
 
@@ -142,6 +159,7 @@ impl TerminalGrid for WeztermGrid {
     ) -> Option<Vec<u8>> {
         if let Some((key, modifiers)) = transform_key(key, modifiers) {
             let _ = self.terminal.key_down(key, modifiers);
+            self.update_scroll(self.max_scroll());
         }
         None
     }
@@ -181,30 +199,27 @@ impl TerminalGrid for WeztermGrid {
 
     fn selected_text(&self) -> Option<String> {
         let selection = self.selection.get_selection()?;
+        let screen = self.terminal.screen();
 
-        let range = selection.start.y..selection.end.y + 1;
+        let range = selection.start.y..(selection.end.y + 1).min(screen.scrollback_rows());
 
         let mut clipboard = String::new();
 
-        self.terminal
-            .screen()
-            .with_phys_lines(range.clone(), |lines| {
-                for (offset, line) in lines.iter().enumerate() {
-                    let index = range.start + offset;
-                    for (cell_index, cell) in line.visible_cells().enumerate() {
-                        if is_selected(
-                            &selection,
-                            SelectionPosition {
-                                x: cell_index,
-                                y: index,
-                            },
-                        ) {
-                            clipboard.push_str(&cell.str());
-                        }
-                    }
-                    clipboard.push('\n');
+        for (offset, line) in self.screen_lines(range.clone()).iter().enumerate() {
+            let index = range.start + offset;
+            for (cell_index, cell) in line.visible_cells().enumerate() {
+                if is_selected(
+                    &selection,
+                    SelectionPosition {
+                        x: cell_index,
+                        y: index,
+                    },
+                ) {
+                    clipboard.push_str(&cell.str());
                 }
-            });
+            }
+            clipboard.push('\n');
+        }
 
         let clipboard = clipboard.trim().to_string();
 
@@ -227,7 +242,7 @@ impl TerminalGrid for WeztermGrid {
         let pos = self.terminal.cursor_pos();
         let y = (pos.y as usize) + self.inverse_offset();
 
-        if y < self.size.rows || pos.visibility == CursorVisibility::Visible {
+        if y < self.size.rows && pos.visibility == CursorVisibility::Visible {
             Some(VisiblePosition { x: pos.x, y })
         } else {
             None
