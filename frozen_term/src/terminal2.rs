@@ -11,114 +11,9 @@ use wezterm_term::{CellAttributes, Underline};
 use crate::{
     Style,
     terminal::style::CursorShape,
-    terminal_grid::{PreRenderer, TerminalGrid},
+    terminal_grid::{PreRenderer, TerminalGrid, VisiblePosition},
     wezterm::{WeztermGrid, prerenderer::WeztermPreRenderer},
 };
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct GridPosition {
-    pub x: usize,
-    pub y: usize,
-}
-
-impl GridPosition {
-    fn into_selection_position(self, horizontal_offset: usize) -> SelectionPosition {
-        SelectionPosition {
-            x: self.x,
-            y: self.y + horizontal_offset,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct SelectionPosition {
-    pub x: usize,
-    pub y: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum SelectionState {
-    None,
-    Selecting {
-        start: SelectionPosition,
-        current: SelectionPosition,
-    },
-    Selected {
-        start: SelectionPosition,
-        end: SelectionPosition,
-    },
-}
-
-impl SelectionState {
-    fn start(&mut self, position: SelectionPosition) {
-        *self = Self::Selecting {
-            start: position.clone(),
-            current: position,
-        };
-    }
-
-    fn move_mouse(&mut self, position: SelectionPosition) {
-        match self {
-            Self::Selecting { current, .. } => {
-                *current = position;
-            }
-            Self::None => (),
-            Self::Selected { .. } => (),
-        }
-    }
-
-    fn stop(&mut self) {
-        match self {
-            Self::Selecting { start, current } => {
-                if start != current {
-                    *self = Self::Selected {
-                        start: start.clone(),
-                        end: current.clone(),
-                    }
-                } else {
-                    *self = Self::None
-                }
-            }
-            Self::None => (),
-            Self::Selected { .. } => (),
-        };
-    }
-
-    fn is_position_selected(&self, pos: SelectionPosition) -> bool {
-        let (start_pos, end_pos) = match self {
-            SelectionState::Selecting { start, current } => (start.clone(), current.clone()),
-            SelectionState::Selected { start, end } => (start.clone(), end.clone()),
-            SelectionState::None => return false,
-        };
-
-        // Normalize selection so start is always before end
-        let (start_pos, end_pos) =
-            if start_pos.y < end_pos.y || (start_pos.y == end_pos.y && start_pos.x <= end_pos.x) {
-                (start_pos, end_pos)
-            } else {
-                (end_pos, start_pos)
-            };
-
-        // Check if position is within selection
-        if pos.y < start_pos.y || pos.y > end_pos.y {
-            return false;
-        }
-
-        if pos.y == start_pos.y && pos.y == end_pos.y {
-            // Selection is on single line
-            pos.x >= start_pos.x && pos.x <= end_pos.x
-        } else if pos.y == start_pos.y {
-            // First line of multi-line selection
-            pos.x >= start_pos.x
-        } else if pos.y == end_pos.y {
-            // Last line of multi-line selection
-            pos.x <= end_pos.x
-        } else {
-            // Middle line of multi-line selection
-            true
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Message(InnerMessage);
@@ -133,8 +28,8 @@ enum InnerMessage {
     Input(Vec<u8>),
     Paste(Option<String>),
     Scrolled(ScrollDelta),
-    StartSelection(GridPosition),
-    MoveSelection(GridPosition),
+    StartSelection(VisiblePosition),
+    MoveSelection(VisiblePosition),
     EndSelection,
     ShowContextMenu(iced::Point),
     HideContextMenu,
@@ -153,7 +48,6 @@ pub enum Action {
 
 pub struct Terminal {
     grid: WeztermGrid,
-    selection_state: SelectionState,
     id: Id,
     key_filter: Option<Box<dyn Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool>>,
     // here to abort the task on drop
@@ -174,7 +68,6 @@ impl Terminal {
         (
             Self {
                 grid,
-                selection_state: SelectionState::None,
                 id: Id(iced::advanced::widget::Id::unique()),
                 key_filter: None,
                 context_menu_position: None,
@@ -277,43 +170,34 @@ impl Terminal {
             InnerMessage::Input(input) => Action::Input(input),
             InnerMessage::Paste(paste) => {
                 if let Some(paste) = paste {
-                    Action::Input(self.grid.paste(&paste))
-                } else {
-                    Action::None
+                    if let Some(input) = self.grid.paste(&paste) {
+                        return Action::Input(input);
+                    }
                 }
+                Action::None
             }
             InnerMessage::Scrolled(scrolled) => {
                 match scrolled {
                     ScrollDelta::Lines { y, .. } => {
-                        if y >= 0.0 {
-                            self.grid.scroll_up(y as usize);
-                        } else {
-                            self.grid.scroll_down((-y) as usize);
-                        }
+                        self.grid.scroll(y as isize);
                     }
                     ScrollDelta::Pixels { y, .. } => {
-                        if y >= 0.0 {
-                            self.grid.scroll_up(y as usize);
-                        } else {
-                            self.grid.scroll_down((-y) as usize);
-                        }
+                        self.grid.scroll(y as isize);
                     }
                 };
 
                 Action::None
             }
-            InnerMessage::StartSelection(position) => {
-                self.selection_state.start(self.pos_conversion(position));
+            InnerMessage::StartSelection(start) => {
+                self.grid.start_selection(start);
                 Action::None
             }
             InnerMessage::MoveSelection(position) => {
-                self.selection_state
-                    .move_mouse(self.pos_conversion(position));
-
+                self.grid.move_selection(position);
                 Action::None
             }
             InnerMessage::EndSelection => {
-                self.selection_state.stop();
+                self.grid.end_selection();
                 Action::None
             }
             InnerMessage::ShowContextMenu(position) => {
@@ -351,12 +235,6 @@ impl Terminal {
                 .map(Message)
                 .chain(self.focus()),
         )
-    }
-
-    fn pos_conversion(&self, position: GridPosition) -> SelectionPosition {
-        // let horizontal_offset =
-        //     self.grid.screen().scrollback_rows() - self.grid.get_size().rows - self.scroll_pos;
-        position.into_selection_position(0)
     }
 
     pub fn view<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, Message, Theme, Renderer>
@@ -678,10 +556,10 @@ where
 
                         if let Some(cursor_position) = cursor.position() {
                             if let Some(char_pos) =
-                                self.screen_to_grid_position(cursor_position, layout, renderer)
+                                self.screen_to_visible_position(cursor_position, layout, renderer)
                             {
                                 shell.publish(InnerMessage::StartSelection(char_pos));
-                                shell.request_redraw();
+                                // shell.request_redraw();
                             }
                         }
                     }
@@ -690,7 +568,7 @@ where
                     if *button == iced::mouse::Button::Right {
                         if let Some(cursor_position) = cursor.position() {
                             shell.publish(InnerMessage::ShowContextMenu(cursor_position));
-                            shell.request_redraw();
+                            // shell.request_redraw();
                         }
                     }
 
@@ -700,23 +578,18 @@ where
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                if let SelectionState::Selecting { current, .. } = &self.term.selection_state {
+                if self.term.grid.currently_selecting() {
                     if let Some(char_pos) =
-                        self.screen_to_grid_position(*position, layout, renderer)
+                        self.screen_to_visible_position(*position, layout, renderer)
                     {
-                        // let horizontal_offset = self.term.grid.screen().scrollback_rows()
-                        //     - self.term.grid.get_size().rows
-                        //     - self.term.scroll_pos;
-                        // if &char_pos.into_selection_position(horizontal_offset) != current {
-                        //     shell.publish(InnerMessage::MoveSelection(char_pos));
-                        // }
+                        shell.publish(InnerMessage::MoveSelection(char_pos));
                     }
                     shell.capture_event();
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(button)) => {
                 if *button == iced::mouse::Button::Left {
-                    if let SelectionState::Selecting { .. } = &self.term.selection_state {
+                    if self.term.grid.currently_selecting() {
                         shell.publish(InnerMessage::EndSelection);
                     }
                     shell.capture_event();
@@ -867,12 +740,12 @@ impl<'a> TerminalWidget<'a> {
         Self { term }
     }
 
-    fn screen_to_grid_position<Renderer>(
+    fn screen_to_visible_position<Renderer>(
         &self,
         screen_pos: iced::Point,
         layout: iced::advanced::Layout<'_>,
         renderer: &Renderer,
-    ) -> Option<GridPosition>
+    ) -> Option<VisiblePosition>
     where
         Renderer: iced::advanced::text::Renderer,
     {
@@ -905,7 +778,7 @@ impl<'a> TerminalWidget<'a> {
         // Account for scroll offset - the displayed text is offset by scroll_pos
         let absolute_y = char_y;
 
-        Some(GridPosition {
+        Some(VisiblePosition {
             x: char_x,
             y: absolute_y,
         })

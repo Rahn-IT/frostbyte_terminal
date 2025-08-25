@@ -3,7 +3,14 @@ use std::{collections::VecDeque, fmt::Debug, ops::Range};
 use iced::{advanced::text, widget::text::Span};
 use wezterm_term::{CellAttributes, PhysRowIndex, Underline};
 
-use crate::{Style, terminal_grid::PreRenderer, wezterm::WeztermGrid};
+use crate::{
+    Style,
+    terminal_grid::PreRenderer,
+    wezterm::{
+        WeztermGrid,
+        selection::{SelectionPosition, is_selected},
+    },
+};
 
 pub struct WeztermPreRenderer<R: text::Renderer> {
     rows: VecDeque<Option<ParagraphRow<R>>>,
@@ -39,6 +46,8 @@ where
                 .min(grid.scroll_offset + screen.physical_rows);
         self.visible_range = range.clone();
 
+        let selection = grid.selection.get_selection();
+
         let text_size = self
             .style
             .text_size
@@ -49,6 +58,7 @@ where
         let line_span = iced::debug::time("lines");
         screen.with_phys_lines(range.clone(), |lines| {
             for (offset, line) in lines.iter().enumerate() {
+                let mut is_current_selected = false;
                 let prepare = iced::debug::time("prepare");
                 let index = range.start + offset;
 
@@ -71,10 +81,24 @@ where
                 let mut spans: Vec<Span<(), R::Font>> = Vec::new();
                 let mut needs_advanced = false;
 
-                for cell in line.visible_cells() {
-                    if cell.attrs() != &current_attrs {
-                        push_span(&self.style, &mut spans, current_text, current_attrs);
+                for (cell_index, cell) in line.visible_cells().enumerate() {
+                    let cell_selected = is_selected(
+                        &selection,
+                        SelectionPosition {
+                            x: cell_index,
+                            y: index,
+                        },
+                    );
+                    if cell.attrs() != &current_attrs || is_current_selected != cell_selected {
+                        push_span(
+                            &self.style,
+                            &mut spans,
+                            current_text,
+                            current_attrs,
+                            is_current_selected,
+                        );
                         current_attrs = cell.attrs().clone();
+                        is_current_selected = cell_selected;
                         current_text = String::new();
                     }
                     let cell_str = cell.str();
@@ -84,7 +108,13 @@ where
                     current_text.push_str(cell_str);
                 }
 
-                push_span(&self.style, &mut spans, current_text, current_attrs);
+                push_span(
+                    &self.style,
+                    &mut spans,
+                    current_text,
+                    current_attrs,
+                    is_current_selected,
+                );
                 span.finish();
 
                 let span = iced::debug::time("text layout");
@@ -137,6 +167,7 @@ fn push_span<Font>(
     spans: &mut Vec<Span<(), Font>>,
     text: String,
     attributes: CellAttributes,
+    is_current_selected: bool,
 ) {
     if text.is_empty() {
         return;
@@ -146,7 +177,7 @@ fn push_span<Font>(
     let mut foreground = style.get_color(attributes.foreground());
 
     // Apply reverse colors for original cell attributes
-    if attributes.reverse() {
+    if attributes.reverse() != is_current_selected {
         (background, foreground) = (foreground, background);
         if foreground.is_none() {
             foreground = Some(style.background_color)

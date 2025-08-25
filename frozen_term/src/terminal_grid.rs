@@ -9,14 +9,18 @@ pub trait TerminalGrid {
         key: iced::keyboard::Key,
         modifiers: iced::keyboard::Modifiers,
     ) -> Option<Vec<u8>>;
-    fn paste(&mut self, text: &str) -> Vec<u8>;
+    fn paste(&mut self, text: &str) -> Option<Vec<u8>>;
 
-    fn scroll_up(&mut self, lines: usize);
-    fn scroll_down(&mut self, lines: usize);
+    fn scroll(&mut self, lines: isize);
+
+    fn start_selection(&mut self, start: VisiblePosition);
+    fn move_selection(&mut self, end: VisiblePosition);
+    fn end_selection(&mut self);
+    fn currently_selecting(&self) -> bool;
 
     fn get_title(&self) -> &str;
     fn get_size(&self) -> Size;
-    fn get_cursor(&self) -> Option<Cursor>;
+    fn get_cursor(&self) -> Option<VisiblePosition>;
 }
 
 pub trait PreRenderer<R>
@@ -38,8 +42,8 @@ pub struct Size {
     pub rows: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Cursor {
+#[derive(Debug, Clone, PartialEq)]
+pub struct VisiblePosition {
     pub x: usize,
     pub y: usize,
 }
