@@ -1,13 +1,17 @@
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 use termwiz::surface::CursorVisibility;
 use tokio::sync::mpsc;
 use tokio_stream::Stream;
-use wezterm_term::{TerminalConfiguration, TerminalSize, color::ColorPalette};
+use wezterm_term::{PhysRowIndex, TerminalConfiguration, TerminalSize, color::ColorPalette};
 
-use crate::terminal_grid::{Cursor, Size, TerminalGrid};
+use crate::{
+    terminal_grid::{Size, TerminalGrid, VisiblePosition},
+    wezterm::selection::SelectionState,
+};
 
 pub mod prerenderer;
+pub mod selection;
 
 pub struct BridgedWriter {
     send: mpsc::Sender<Vec<u8>>,
@@ -40,6 +44,7 @@ pub struct WeztermGrid {
     terminal: wezterm_term::Terminal,
     scroll_offset: usize,
     size: Size,
+    selection: SelectionState,
 }
 
 impl WeztermGrid {
@@ -65,10 +70,24 @@ impl WeztermGrid {
             Self {
                 terminal: term,
                 scroll_offset: 0,
+                selection: SelectionState::new(),
                 size,
             },
             recv,
         )
+    }
+
+    fn invalidate_lines(&mut self, invalidate: Range<PhysRowIndex>) {
+        println!("Invalidation range: {:?}", invalidate);
+        self.terminal.increment_seqno();
+        let seqno = self.terminal.current_seqno();
+        self.terminal
+            .screen_mut()
+            .with_phys_lines_mut(invalidate, |lines| {
+                for line in lines {
+                    line.update_last_change_seqno(seqno);
+                }
+            });
     }
 
     fn max_scroll(&self) -> usize {
@@ -76,6 +95,10 @@ impl WeztermGrid {
         screen
             .scrollback_rows()
             .saturating_sub(screen.physical_rows)
+    }
+
+    fn inverse_offset(&self) -> usize {
+        self.max_scroll().saturating_sub(self.scroll_offset)
     }
 }
 
@@ -117,22 +140,39 @@ impl TerminalGrid for WeztermGrid {
         None
     }
 
-    fn paste(&mut self, text: &str) -> Vec<u8> {
-        text.replace("\x1b[200~", "")
-            .replace("\x1b[201~", "")
-            .as_bytes()
-            .to_vec()
+    fn paste(&mut self, text: &str) -> Option<Vec<u8>> {
+        let _ = self.terminal.send_paste(text);
+        None
     }
 
-    fn scroll_up(&mut self, lines: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(lines);
-    }
-
-    fn scroll_down(&mut self, lines: usize) {
+    fn scroll(&mut self, lines: isize) {
         self.scroll_offset = self
             .scroll_offset
-            .saturating_add(lines)
+            .saturating_add_signed(-lines)
             .min(self.max_scroll());
+        if let Some(invalidate) = self.selection.set_scroll(self.scroll_offset) {
+            self.invalidate_lines(invalidate);
+        }
+    }
+
+    fn start_selection(&mut self, start: VisiblePosition) {
+        if let Some(invalidate) = self.selection.start(start) {
+            self.invalidate_lines(invalidate);
+        }
+    }
+
+    fn move_selection(&mut self, end: VisiblePosition) {
+        if let Some(invalidate) = self.selection.move_end(end) {
+            self.invalidate_lines(invalidate);
+        }
+    }
+
+    fn end_selection(&mut self) {
+        self.selection.finish()
+    }
+
+    fn currently_selecting(&self) -> bool {
+        self.selection.is_active()
     }
 
     fn get_title(&self) -> &str {
@@ -143,13 +183,12 @@ impl TerminalGrid for WeztermGrid {
         self.size
     }
 
-    fn get_cursor(&self) -> Option<Cursor> {
-        let cursor_offset = self.max_scroll() - self.scroll_offset;
+    fn get_cursor(&self) -> Option<VisiblePosition> {
         let pos = self.terminal.cursor_pos();
-        let y = (pos.y as usize) + cursor_offset;
+        let y = (pos.y as usize) + self.inverse_offset();
 
         if y < self.size.rows || pos.visibility == CursorVisibility::Visible {
-            Some(Cursor { x: pos.x, y })
+            Some(VisiblePosition { x: pos.x, y })
         } else {
             None
         }
