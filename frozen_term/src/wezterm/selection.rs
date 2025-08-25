@@ -54,7 +54,6 @@ impl SelectionState {
 
     #[must_use]
     pub fn start(&mut self, pos: VisiblePosition) -> Option<Range<PhysRowIndex>> {
-        println!("Starting selection at {:?}", pos);
         let invalidate = match &self.step {
             SelectionStep::Selecting { start, end } => {
                 let end = SelectionPosition::from_visible(end.clone(), self.scroll_offset);
@@ -80,7 +79,6 @@ impl SelectionState {
 
     #[must_use]
     pub fn move_end(&mut self, pos: VisiblePosition) -> Option<Range<PhysRowIndex>> {
-        println!("Moving selection end to {:?}", pos);
         match &self.step {
             SelectionStep::Selecting { start, .. } | SelectionStep::Starting(start) => {
                 let old_line = match &self.step {
@@ -110,7 +108,6 @@ impl SelectionState {
     }
 
     pub fn finish(&mut self) {
-        println!("Finishing selection");
         match &self.step {
             SelectionStep::Selecting { start, end } => {
                 let end = SelectionPosition::from_visible(end.clone(), self.scroll_offset);

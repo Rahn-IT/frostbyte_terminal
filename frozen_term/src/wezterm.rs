@@ -78,7 +78,6 @@ impl WeztermGrid {
     }
 
     fn invalidate_lines(&mut self, invalidate: Range<PhysRowIndex>) {
-        println!("Invalidation range: {:?}", invalidate);
         self.terminal.increment_seqno();
         let seqno = self.terminal.current_seqno();
         self.terminal
@@ -100,6 +99,13 @@ impl WeztermGrid {
     fn inverse_offset(&self) -> usize {
         self.max_scroll().saturating_sub(self.scroll_offset)
     }
+
+    fn update_scroll(&mut self, new_offset: usize) {
+        self.scroll_offset = new_offset.min(self.max_scroll());
+        if let Some(invalidate) = self.selection.set_scroll(self.scroll_offset) {
+            self.invalidate_lines(invalidate);
+        }
+    }
 }
 
 impl TerminalGrid for WeztermGrid {
@@ -107,7 +113,7 @@ impl TerminalGrid for WeztermGrid {
         let auto_scroll = self.scroll_offset == self.max_scroll();
         self.terminal.advance_bytes(bytes);
         if auto_scroll {
-            self.scroll_offset = self.max_scroll();
+            self.update_scroll(self.max_scroll());
         }
     }
 
@@ -126,7 +132,7 @@ impl TerminalGrid for WeztermGrid {
             ..Default::default()
         });
         self.size = size;
-        self.scroll_offset = new_scroll.min(self.max_scroll());
+        self.update_scroll(new_scroll);
     }
 
     fn press_key(
@@ -146,13 +152,11 @@ impl TerminalGrid for WeztermGrid {
     }
 
     fn scroll(&mut self, lines: isize) {
-        self.scroll_offset = self
-            .scroll_offset
-            .saturating_add_signed(-lines)
-            .min(self.max_scroll());
-        if let Some(invalidate) = self.selection.set_scroll(self.scroll_offset) {
-            self.invalidate_lines(invalidate);
-        }
+        self.update_scroll(
+            self.scroll_offset
+                .saturating_add_signed(-lines)
+                .min(self.max_scroll()),
+        );
     }
 
     fn start_selection(&mut self, start: VisiblePosition) {
