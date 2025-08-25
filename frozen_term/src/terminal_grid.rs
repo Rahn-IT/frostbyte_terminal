@@ -17,6 +17,7 @@ pub trait TerminalGrid {
     fn move_selection(&mut self, end: VisiblePosition);
     fn end_selection(&mut self);
     fn currently_selecting(&self) -> bool;
+    fn selected_text(&self) -> Option<String>;
 
     fn get_title(&self) -> &str;
     fn get_size(&self) -> Size;

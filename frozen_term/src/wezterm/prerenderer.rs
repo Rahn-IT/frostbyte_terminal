@@ -8,7 +8,7 @@ use crate::{
     terminal_grid::PreRenderer,
     wezterm::{
         WeztermGrid,
-        selection::{SelectionPosition, is_selected},
+        selection::{SelectionPosition, is_maybe_selected},
     },
 };
 
@@ -82,7 +82,7 @@ where
                 let mut needs_advanced = false;
 
                 for (cell_index, cell) in line.visible_cells().enumerate() {
-                    let cell_selected = is_selected(
+                    let cell_selected = is_maybe_selected(
                         &selection,
                         SelectionPosition {
                             x: cell_index,

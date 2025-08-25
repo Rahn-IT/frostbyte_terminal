@@ -26,8 +26,8 @@ pub struct SelectionState {
 }
 
 pub struct Selection {
-    start: SelectionPosition,
-    end: SelectionPosition,
+    pub start: SelectionPosition,
+    pub end: SelectionPosition,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -185,11 +185,15 @@ impl Selection {
     }
 }
 
-pub fn is_selected(selection: &Option<Selection>, pos: SelectionPosition) -> bool {
+pub fn is_maybe_selected(selection: &Option<Selection>, pos: SelectionPosition) -> bool {
     let Some(selection) = selection else {
         return false;
     };
 
+    is_selected(selection, pos)
+}
+
+pub fn is_selected(selection: &Selection, pos: SelectionPosition) -> bool {
     // Check if position is within selection
     if pos.y < selection.start.y || pos.y > selection.end.y {
         return false;
