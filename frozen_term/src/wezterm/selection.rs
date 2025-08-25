@@ -1,4 +1,4 @@
-use std::ops::{Range, RangeInclusive};
+use std::ops::Range;
 
 use wezterm_term::PhysRowIndex;
 
@@ -25,6 +25,7 @@ pub struct SelectionState {
     scroll_offset: usize,
 }
 
+#[derive(Debug)]
 pub struct Selection {
     pub start: SelectionPosition,
     pub end: SelectionPosition,
@@ -144,6 +145,17 @@ impl SelectionState {
                 } else {
                     Some(old..new + 1)
                 }
+            }
+            SelectionStep::Starting(start) => {
+                let end = VisiblePosition {
+                    x: start.x,
+                    y: start.y - self.scroll_offset,
+                };
+                self.step = SelectionStep::Selecting {
+                    start: start.clone(),
+                    end,
+                };
+                None
             }
             _ => None,
         };

@@ -1,12 +1,10 @@
 use std::time::{Duration, Instant};
 
 use iced::{
-    Rectangle, Size, Task, Vector,
+    Rectangle, Size, Vector,
     advanced::{text::Paragraph, widget::operation::Focusable},
     mouse::ScrollDelta,
 };
-
-use wezterm_term::{CellAttributes, Underline};
 
 use crate::{
     Style,
@@ -462,11 +460,12 @@ where
                     state.last_widget_width = widget_width;
                     state.last_widget_height = widget_height;
 
-                    let line_height = renderer.default_size().0;
-                    let char_width = line_height * CHAR_WIDTH;
+                    let text_size = self.term.style.text_size.unwrap_or(renderer.default_size());
+                    let line_height = self.term.style.line_height.to_absolute(text_size);
+                    let char_width = text_size * CHAR_WIDTH;
 
-                    let target_line_count = (0.77 * widget_height / line_height) as usize;
-                    let target_col_count = (widget_width / char_width) as usize;
+                    let target_line_count = (widget_height / line_height.0) as usize;
+                    let target_col_count = (widget_width / char_width.0) as usize;
                     let size = self.term.grid.get_size();
 
                     if size.rows != target_line_count || size.cols != target_col_count {
