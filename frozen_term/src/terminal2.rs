@@ -221,11 +221,11 @@ impl Terminal {
     }
 
     fn copy(&self) -> Action {
-        // if let Some(selected_text) = self.get_selected_text() {
-        //     Action::Run(iced::clipboard::write(selected_text).chain(self.focus()))
-        // } else {
-        Action::None
-        // }
+        if let Some(selected_text) = self.grid.selected_text() {
+            Action::Run(iced::clipboard::write(selected_text).chain(self.focus()))
+        } else {
+            Action::Run(self.focus())
+        }
     }
 
     fn paste(&self) -> Action {
