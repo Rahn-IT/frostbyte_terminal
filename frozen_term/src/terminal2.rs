@@ -130,6 +130,7 @@ enum InnerMessage {
         modified_key: iced::keyboard::key::Key,
         modifiers: iced::keyboard::Modifiers,
     },
+    Input(Vec<u8>),
     Paste(Option<String>),
     Scrolled(ScrollDelta),
     StartSelection(GridPosition),
@@ -158,20 +159,29 @@ pub struct Terminal {
     // here to abort the task on drop
     context_menu_position: Option<iced::Point>,
     style: Style,
+    _handle: iced::task::Handle,
 }
 
 impl Terminal {
     pub fn new() -> (Self, iced::Task<Message>) {
+        let (grid, stream) = WeztermGrid::new();
+        let (task, handle) = iced::Task::run(stream, InnerMessage::Input)
+            .map(Message)
+            .abortable();
+
+        let handle = handle.abort_on_drop();
+
         (
             Self {
-                grid: WeztermGrid::new(),
+                grid,
                 selection_state: SelectionState::None,
                 id: Id(iced::advanced::widget::Id::unique()),
                 key_filter: None,
                 context_menu_position: None,
                 style: Style::default(),
+                _handle: handle,
             },
-            Task::none(),
+            task,
         )
     }
 
@@ -264,6 +274,7 @@ impl Terminal {
                     Action::None
                 }
             }
+            InnerMessage::Input(input) => Action::Input(input),
             InnerMessage::Paste(paste) => {
                 if let Some(paste) = paste {
                     Action::Input(self.grid.paste(&paste))

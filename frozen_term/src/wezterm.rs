@@ -1,17 +1,25 @@
-use std::{io::Write, sync::Arc};
+use std::sync::Arc;
 
 use termwiz::surface::CursorVisibility;
+use tokio::sync::mpsc;
+use tokio_stream::Stream;
 use wezterm_term::{TerminalConfiguration, TerminalSize, color::ColorPalette};
 
 use crate::terminal_grid::{Cursor, Size, TerminalGrid};
 
 pub mod prerenderer;
 
-pub struct VoidWriter {}
+pub struct BridgedWriter {
+    send: mpsc::Sender<Vec<u8>>,
+}
 
-impl Write for VoidWriter {
+impl std::io::Write for BridgedWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Ok(buf.len())
+        if self.send.blocking_send(buf.to_vec()).is_ok() {
+            Ok(buf.len())
+        } else {
+            Ok(0)
+        }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -35,26 +43,32 @@ pub struct WeztermGrid {
 }
 
 impl WeztermGrid {
-    pub fn new() -> Self {
+    pub fn new() -> (Self, impl Stream<Item = Vec<u8>>) {
         let term_size = wezterm_term::TerminalSize::default();
         let size = Size {
             rows: term_size.rows,
             cols: term_size.cols,
         };
 
+        let (send, recv) = mpsc::channel(100);
+        let recv = tokio_stream::wrappers::ReceiverStream::new(recv);
+
         let term = wezterm_term::Terminal::new(
             term_size,
             Arc::new(Config {}),
             "frozen_term",
             env!("CARGO_PKG_VERSION"),
-            Box::new(VoidWriter {}),
+            Box::new(BridgedWriter { send }),
         );
 
-        Self {
-            terminal: term,
-            scroll_offset: 0,
-            size,
-        }
+        (
+            Self {
+                terminal: term,
+                scroll_offset: 0,
+                size,
+            },
+            recv,
+        )
     }
 
     fn max_scroll(&self) -> usize {
@@ -97,31 +111,10 @@ impl TerminalGrid for WeztermGrid {
         key: iced::keyboard::Key,
         modifiers: iced::keyboard::Modifiers,
     ) -> Option<Vec<u8>> {
-        if let Some((wez_key, wez_mods)) = transform_key(key, modifiers) {
-            if let Some(encoded) = wez_key
-                .encode(
-                    wez_mods,
-                    termwiz::input::KeyCodeEncodeModes {
-                        #[cfg(unix)]
-                        encoding: termwiz::input::KeyboardEncoding::Xterm,
-                        #[cfg(windows)]
-                        encoding: termwiz::input::KeyboardEncoding::Win32,
-                        application_cursor_keys: false,
-                        newline_mode: false,
-                        modify_other_keys: None,
-                    },
-                    true,
-                )
-                .ok()
-            {
-                self.scroll_offset = self.max_scroll();
-                Some(encoded.into_bytes())
-            } else {
-                None
-            }
-        } else {
-            None
+        if let Some((key, modifiers)) = transform_key(key, modifiers) {
+            let _ = self.terminal.key_down(key, modifiers);
         }
+        None
     }
 
     fn paste(&mut self, text: &str) -> Vec<u8> {
