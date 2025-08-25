@@ -309,37 +309,6 @@ impl Terminal {
             iced::widget::stack![terminal_widget].into()
         }
     }
-
-    fn push_span(
-        style: &Style,
-        formatted_row: &mut Vec<iced::advanced::text::Span<'static, (), iced::Font>>,
-        current_text: String,
-        attributes: CellAttributes,
-        is_selected: bool,
-    ) {
-        let mut background = style.get_color(attributes.background());
-        let mut foreground = style.get_color(attributes.foreground());
-
-        if !current_text.is_empty() {
-            // Apply reverse colors for original cell attributes
-            if attributes.reverse() != is_selected {
-                (background, foreground) = (foreground, background);
-                if background.is_none() {
-                    background = Some(style.foreground_color);
-                }
-                if foreground.is_none() {
-                    foreground = Some(style.background_color);
-                }
-            }
-
-            let span = iced::advanced::text::Span::new(current_text)
-                .color_maybe(foreground)
-                .background_maybe(background)
-                .underline(attributes.underline() != Underline::None);
-
-            formatted_row.push(span);
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -390,11 +359,6 @@ struct State<R: iced::advanced::text::Renderer> {
     last_widget_width: f32,
     last_widget_height: f32,
     last_id: Option<Id>,
-}
-
-struct ParagraphRow<R: iced::advanced::text::Renderer> {
-    paragraph: R::Paragraph,
-    last_layout_seqno: usize,
 }
 
 const CHAR_WIDTH: f32 = 0.6;
