@@ -11,7 +11,7 @@ use signal_hook::consts::signal::SIGUSR1;
 #[cfg(target_os = "linux")]
 use signal_hook::flag as signal_flag;
 
-use frozen_term::local_terminal::{self, LocalTerminal};
+use frozen_term::local_terminal2::{self as local_terminal, LocalTerminal};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
     Element, Font, Length, Subscription, Task,
@@ -164,6 +164,12 @@ impl UI {
             }
             Message::OpenTab => self.open_tab(),
             Message::SwitchTab(id) => {
+                // refocus tab if clicking on the already selected one
+                if self.selected_tab == id {
+                    if let Some(term) = self.terminals.get(&id) {
+                        return term.focus();
+                    }
+                }
                 self.switch_tab(id);
                 Task::none()
             }

@@ -522,7 +522,6 @@ where
                                 self.screen_to_visible_position(cursor_position, layout, renderer)
                             {
                                 shell.publish(InnerMessage::StartSelection(char_pos));
-                                // shell.request_redraw();
                             }
                         }
                     }
@@ -531,7 +530,6 @@ where
                     if *button == iced::mouse::Button::Right {
                         if let Some(cursor_position) = cursor.position() {
                             shell.publish(InnerMessage::ShowContextMenu(cursor_position));
-                            // shell.request_redraw();
                         }
                     }
 
@@ -554,8 +552,8 @@ where
                 if *button == iced::mouse::Button::Left {
                     if self.term.grid.currently_selecting() {
                         shell.publish(InnerMessage::EndSelection);
+                        shell.capture_event();
                     }
-                    shell.capture_event();
                 }
             }
             iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
