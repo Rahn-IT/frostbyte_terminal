@@ -68,8 +68,6 @@ where
                 self.cache_rows.clear();
                 self.row_cache_start = range.start;
             } else if missing_space > 0 {
-
-                );
                 self.cache_rows.drain(0..missing_space);
                 self.row_cache_start += missing_space;
             }
@@ -95,7 +93,6 @@ where
             }
             self.row_cache_start -= missing;
         }
-
 
         self.visible_cache_range =
             range.start - self.row_cache_start..range.end - self.row_cache_start;
