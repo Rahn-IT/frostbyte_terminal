@@ -8,10 +8,12 @@ use iced::{
 
 use crate::{
     Style,
-    terminal::style::CursorShape,
     terminal_grid::{PreRenderer, TerminalGrid, VisiblePosition},
     wezterm::{WeztermGrid, prerenderer::WeztermPreRenderer},
 };
+
+pub mod style;
+use style::CursorShape;
 
 #[derive(Debug, Clone)]
 pub struct Message(InnerMessage);
