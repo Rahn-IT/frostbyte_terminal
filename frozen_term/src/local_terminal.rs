@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Style, terminal2 as terminal};
+use crate::{Style, terminal};
 use async_pty::PtyProcess;
 use iced::{
     self, Element, Length, Task,
