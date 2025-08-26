@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt::Debug, ops::Range, time::Instant};
+use std::{collections::VecDeque, fmt::Debug, ops::Range};
 
 use iced::{advanced::text, widget::text::Span};
 use wezterm_term::{CellAttributes, PhysRowIndex, Underline};
@@ -63,7 +63,7 @@ where
         if range.end > row_cache_end {
             let mut missing = range.end - row_cache_end;
             let missing_space = missing.saturating_sub(free_space);
-            if missing_space >= self.max_cache_size {
+            if missing_space >= self.cache_rows.len() {
                 missing = screen.physical_rows;
                 self.cache_rows.clear();
                 self.row_cache_start = range.start;
@@ -80,7 +80,7 @@ where
         if range.start < self.row_cache_start {
             let mut missing = self.row_cache_start - range.start;
             let missing_space = missing.saturating_sub(free_space);
-            if missing_space >= self.max_cache_size {
+            if missing_space >= self.cache_rows.len() {
                 self.cache_rows.clear();
                 self.row_cache_start = range.end;
                 missing = screen.physical_rows;
