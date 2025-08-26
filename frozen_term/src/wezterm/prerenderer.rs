@@ -57,27 +57,35 @@ where
         // Make sure our paragraph cache is ready and aligned
 
         let row_cache_end = self.row_cache_start + self.cache_rows.len();
-        let free_space = self.max_cache_size - self.cache_rows.len();
+        let free_space = self.max_cache_size.saturating_sub(self.cache_rows.len());
 
+        // Add more lines to the end of the cache
         if range.end > row_cache_end {
-            let missing = range.end - row_cache_end;
+            let mut missing = range.end - row_cache_end;
             let missing_space = missing.saturating_sub(free_space);
-            if missing_space >= self.cache_rows.len() {
+            if missing_space >= self.max_cache_size {
+                missing = screen.physical_rows;
                 self.cache_rows.clear();
+                self.row_cache_start = range.start;
             } else if missing_space > 0 {
+
+                );
                 self.cache_rows.drain(0..missing_space);
+                self.row_cache_start += missing_space;
             }
-            self.row_cache_start += missing_space;
             for _ in 0..missing {
                 self.cache_rows.push_back(ParagraphRow::default());
             }
         }
 
+        // Add more lines to the front of the cache
         if range.start < self.row_cache_start {
-            let missing = self.row_cache_start - range.start;
+            let mut missing = self.row_cache_start - range.start;
             let missing_space = missing.saturating_sub(free_space);
-            if missing_space >= self.cache_rows.len() {
+            if missing_space >= self.max_cache_size {
                 self.cache_rows.clear();
+                self.row_cache_start = range.end;
+                missing = screen.physical_rows;
             } else if missing_space > 0 {
                 self.cache_rows
                     .drain(self.cache_rows.len() - missing_space..self.cache_rows.len());
@@ -85,8 +93,9 @@ where
             for _ in 0..missing {
                 self.cache_rows.push_front(ParagraphRow::default());
             }
-            self.row_cache_start -= missing_space;
+            self.row_cache_start -= missing;
         }
+
 
         self.visible_cache_range =
             range.start - self.row_cache_start..range.end - self.row_cache_start;
