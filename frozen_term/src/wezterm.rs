@@ -96,8 +96,7 @@ impl WeztermGrid {
 
     fn min_scroll(&self) -> usize {
         let screen = self.terminal.screen();
-        let max_stable_index =
-            screen.phys_to_stable_row_index(screen.scrollback_rows() - 1) as usize;
+        let max_stable_index = screen.phys_to_stable_row_index(screen.scrollback_rows()) as usize;
         max_stable_index.saturating_sub(screen.scrollback_rows())
     }
 
@@ -131,6 +130,8 @@ impl TerminalGrid for WeztermGrid {
         self.terminal.advance_bytes(bytes);
         if auto_scroll {
             self.update_scroll(self.max_scroll());
+        } else {
+            self.update_scroll(self.scroll_offset);
         }
     }
 
