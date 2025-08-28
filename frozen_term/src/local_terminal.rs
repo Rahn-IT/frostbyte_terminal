@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::{Style, terminal};
 use async_pty::PtyProcess;
@@ -16,6 +16,7 @@ enum InnerMessage {
     Opened(Arc<(PtyProcess, tokio::sync::mpsc::Receiver<Vec<u8>>)>),
     Terminal(terminal::Message),
     Output(Vec<u8>),
+    InjectInput(Vec<u8>),
     Closed,
 }
 
@@ -119,6 +120,12 @@ impl LocalTerminal {
                     }
                 }
             }
+            InnerMessage::InjectInput(input) => {
+                if let State::Active(pty) = &self.state {
+                    pty.try_write(input).unwrap();
+                }
+                Action::None
+            }
             InnerMessage::Output(output) => {
                 self.display.advance_bytes(output);
 
@@ -148,10 +155,65 @@ impl LocalTerminal {
         self.display.get_title()
     }
 
+    #[must_use]
     pub fn focus<T>(&self) -> Task<T>
     where
         T: Send + 'static,
     {
         self.display.focus()
     }
+
+    /// !!!WARNING!!!
+    ///
+    /// injected input will be directly injected into the stdin of the terminal process.
+    /// If the user has typed something, that input will still be there!
+    /// When writing commands manually, you'll need to ensure that they are not influenced by what the user has typed
+    /// and you will also have to handle key encoding and control characters yourself.
+    #[must_use]
+    pub fn inject_input(&self, input: InputSequence) -> Task<Message> {
+        if let State::Active(ref pty) = self.state {
+            match input {
+                InputSequence::Raw(input) => {
+                    let _ = pty.try_write(input);
+                    Task::none()
+                }
+                InputSequence::AbortAndRaw(input) => {
+                    let _ = pty.try_write(b"\x03".to_vec());
+                    // While I'd love to skip this weird helper task, my shell just doesn't clear the current line without it.
+                    // 
+                    Task::future(async move {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        Message(InnerMessage::InjectInput(input))
+                    })
+                }
+                InputSequence::AbortAndCommand(mut input) => {
+                    let _ = pty.try_write(b"\x03".to_vec());
+                    input.push('\n');
+                    let input = input.into_bytes();
+                    Task::future(async move {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        Message(InnerMessage::InjectInput(input))
+                    })
+                }
+            }
+        } else {
+            Task::none()
+        }
+    }
+}
+
+pub enum InputSequence {
+    /// !!!WARNING!!!
+    ///
+    /// Is is very rare to need a raw input sequence.
+    /// Please ensure you absolutely know what you are doing before using this method.
+    Raw(Vec<u8>),
+    /// This will send the equivalent of Ctrl+C to the terminal process.
+    /// Before adding your input.
+    AbortAndRaw(Vec<u8>),
+    /// This will send the equivalent of Ctrl+C to the terminal process,
+    /// add your command and finally send a newline.
+    ///
+    /// Be aware that your command will not be sanitized!.
+    AbortAndCommand(String),
 }

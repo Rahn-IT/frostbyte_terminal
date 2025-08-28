@@ -1,5 +1,8 @@
-use frozen_term::local_terminal2::{self as local_terminal, LocalTerminal};
-use iced::Task;
+use frozen_term::local_terminal::{self, InputSequence, LocalTerminal};
+use iced::{
+    Length, Task,
+    widget::{button, column, row, text},
+};
 
 pub fn main() {
     iced::application(UI::start, UI::update, UI::view)
@@ -12,6 +15,9 @@ pub fn main() {
 #[derive(Debug, Clone)]
 enum Message {
     Terminal(local_terminal::Message),
+    GotoHome,
+    GotoRoot,
+    GotoEtc,
 }
 
 struct UI {
@@ -41,11 +47,40 @@ impl UI {
                     local_terminal::Action::None => Task::none(),
                 }
             }
+            Message::GotoHome => self
+                .terminal
+                .inject_input(InputSequence::AbortAndCommand("cd ~".into()))
+                .map(Message::Terminal),
+            Message::GotoRoot => self
+                .terminal
+                .inject_input(InputSequence::AbortAndCommand("cd /".into()))
+                .map(Message::Terminal),
+            Message::GotoEtc => self
+                .terminal
+                .inject_input(InputSequence::AbortAndCommand("cd /etc".into()))
+                .map(Message::Terminal),
         }
     }
 
     fn view(&'_ self) -> iced::Element<'_, Message> {
-        self.terminal.view().map(Message::Terminal)
+        row![
+            self.terminal.view().map(Message::Terminal),
+            column![
+                button(text("Home"))
+                    .width(Length::Fill)
+                    .on_press(Message::GotoHome),
+                button(text("Root"))
+                    .width(Length::Fill)
+                    .on_press(Message::GotoRoot),
+                button(text("Etc"))
+                    .width(Length::Fill)
+                    .on_press(Message::GotoEtc)
+            ]
+            .width(120)
+            .padding(10)
+            .spacing(20)
+        ]
+        .into()
     }
 
     fn title(&self) -> String {
