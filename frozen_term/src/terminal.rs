@@ -4,10 +4,12 @@ use iced::{
     Rectangle, Size, Vector,
     advanced::{text::Paragraph, widget::operation::Focusable},
     mouse::ScrollDelta,
+    widget::row,
 };
 
 use crate::{
     Style,
+    scrollbar::Scrollbar,
     terminal_grid::{PreRenderer, TerminalGrid, VisiblePosition},
     wezterm::{WeztermGrid, prerenderer::WeztermPreRenderer},
 };
@@ -246,6 +248,7 @@ impl Terminal {
             From<iced::widget::text::StyleFn<'static, Theme>>,
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
+        Theme: iced::widget::scrollable::Catalog,
     {
         self.view_internal().map(Message)
     }
@@ -261,8 +264,16 @@ impl Terminal {
             From<iced::widget::text::StyleFn<'static, Theme>>,
         <Theme as iced::widget::container::Catalog>::Class<'static>:
             From<iced::widget::container::StyleFn<'static, Theme>>,
+        Theme: iced::widget::scrollable::Catalog,
     {
-        let terminal_widget = iced::Element::new(TerminalWidget::new(self));
+        let terminal_widget = row![
+            iced::Element::new(TerminalWidget::new(self)),
+            Scrollbar::new(
+                self.grid.available_lines() as f32,
+                self.grid.get_scroll() as f32,
+                self.grid.get_size().rows as f32
+            )
+        ];
 
         if let Some(position) = self.context_menu_position {
             let copy_button = iced::widget::button(iced::widget::text("Copy").size(14))
@@ -499,8 +510,7 @@ where
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => {
-                let state = state.state.downcast_mut::<State<Renderer>>();
-                if state.is_focused() {
+                if cursor.position_over(layout.bounds()).is_some() {
                     shell.publish(InnerMessage::Scrolled(delta.clone()));
                     shell.capture_event();
                 }
@@ -767,12 +777,6 @@ impl<'a> TerminalWidget<'a> {
         let cursor_absolute_y = cursor.y as i64;
         let scroll_offset = 0 as i64;
         let visible_cursor_y = cursor_absolute_y + scroll_offset;
-
-        // // Check if cursor is within the visible area
-        // if visible_cursor_y < 0 || visible_cursor_y >= screen.physical_rows as i64 {
-        //     // Cursor is outside the visible area due to scrolling
-        //     return;
-        // }
 
         // Calculate character dimensions
         let text_size = self
