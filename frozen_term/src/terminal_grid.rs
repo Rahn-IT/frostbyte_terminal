@@ -12,6 +12,8 @@ pub trait TerminalGrid {
     fn paste(&mut self, text: &str) -> Option<Vec<u8>>;
 
     fn scroll(&mut self, lines: isize);
+    fn get_scroll(&self) -> usize;
+    fn available_lines(&self) -> usize;
 
     fn start_selection(&mut self, start: VisiblePosition);
     fn move_selection(&mut self, end: VisiblePosition);

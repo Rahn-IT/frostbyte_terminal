@@ -178,6 +178,14 @@ impl TerminalGrid for WeztermGrid {
         );
     }
 
+    fn get_scroll(&self) -> usize {
+        self.scroll_offset
+    }
+
+    fn available_lines(&self) -> usize {
+        self.terminal.screen().scrollback_rows()
+    }
+
     fn start_selection(&mut self, start: VisiblePosition) {
         if let Some(invalidate) = self.selection.start(start) {
             self.invalidate_lines(invalidate);

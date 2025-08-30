@@ -180,9 +180,9 @@ impl LocalTerminal {
                 InputSequence::AbortAndRaw(input) => {
                     let _ = pty.try_write(b"\x03".to_vec());
                     // While I'd love to skip this weird helper task, my shell just doesn't clear the current line without it.
-                    // 
+                    //
                     Task::future(async move {
-                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        tokio::time::sleep(INJECTION_DELAY).await;
                         Message(InnerMessage::InjectInput(input))
                     })
                 }
@@ -191,7 +191,7 @@ impl LocalTerminal {
                     input.push('\n');
                     let input = input.into_bytes();
                     Task::future(async move {
-                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        tokio::time::sleep(INJECTION_DELAY).await;
                         Message(InnerMessage::InjectInput(input))
                     })
                 }
@@ -201,6 +201,8 @@ impl LocalTerminal {
         }
     }
 }
+
+const INJECTION_DELAY: Duration = Duration::from_millis(100);
 
 pub enum InputSequence {
     /// !!!WARNING!!!

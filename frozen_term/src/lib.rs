@@ -1,3 +1,4 @@
+mod scrollbar;
 mod terminal;
 mod terminal_grid;
 mod wezterm;
