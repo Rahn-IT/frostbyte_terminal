@@ -171,11 +171,11 @@ impl TerminalGrid for WeztermGrid {
     }
 
     fn scroll(&mut self, lines: isize) {
-        self.update_scroll(
-            self.scroll_offset
-                .saturating_add_signed(-lines)
-                .min(self.max_scroll()),
-        );
+        self.update_scroll(self.scroll_offset.saturating_add_signed(-lines));
+    }
+
+    fn scroll_to(&mut self, y: usize) {
+        self.update_scroll(y);
     }
 
     fn get_scroll(&self) -> usize {
