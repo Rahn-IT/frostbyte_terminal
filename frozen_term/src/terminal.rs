@@ -31,6 +31,7 @@ enum InnerMessage {
     Paste(Option<String>),
     Scrolled(ScrollDelta),
     ScrollTo(usize),
+    ScrollDone,
     StartSelection(VisiblePosition),
     MoveSelection(VisiblePosition),
     EndSelection,
@@ -195,6 +196,7 @@ impl Terminal {
                 self.grid.scroll_to(y);
                 Action::None
             }
+            InnerMessage::ScrollDone => Action::Run(self.focus()),
             InnerMessage::StartSelection(start) => {
                 self.grid.start_selection(start);
                 Action::None
@@ -284,6 +286,7 @@ impl Terminal {
                 let new_scroll = (total_rows as f32 * scroll) as usize;
                 InnerMessage::ScrollTo(new_scroll)
             })
+            .on_scroll_done(InnerMessage::ScrollDone)
         ];
 
         if let Some(position) = self.context_menu_position {

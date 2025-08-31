@@ -9,6 +9,7 @@ pub struct Scrollbar<T, Message> {
     scroll: T,
     window: T,
     on_scroll: Option<Box<dyn Fn(f32) -> Message>>,
+    on_scroll_done: Option<Message>,
 }
 
 impl<T, Message> Scrollbar<T, Message>
@@ -21,11 +22,17 @@ where
             scroll,
             window,
             on_scroll: None,
+            on_scroll_done: None,
         }
     }
 
     pub fn on_scroll(mut self, on_scroll: impl Fn(f32) -> Message + 'static) -> Self {
         self.on_scroll = Some(Box::new(on_scroll));
+        self
+    }
+
+    pub fn on_scroll_done(mut self, on_scroll_done: Message) -> Self {
+        self.on_scroll_done = Some(on_scroll_done);
         self
     }
 }
@@ -47,6 +54,7 @@ struct Grab {
 
 impl<T, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Scrollbar<T, Message>
 where
+    Message: Clone,
     Renderer: iced::advanced::Renderer,
     Theme: iced::widget::scrollable::Catalog,
     T: Into<Pixels> + Clone,
@@ -149,6 +157,9 @@ where
                     };
 
                     state.status = new_status;
+                    if let Some(on_scroll_done) = &self.on_scroll_done {
+                        shell.publish(on_scroll_done.clone());
+                    }
                     shell.request_redraw();
                 }
             }
@@ -269,7 +280,7 @@ where
     T: Into<Pixels> + 'static + Clone,
     Renderer: iced::advanced::Renderer,
     Theme: scrollable::Catalog,
-    Message: 'static,
+    Message: Clone + 'static,
 {
     fn from(scrollbar: Scrollbar<T, Message>) -> Self {
         iced::Element::new(scrollbar)
