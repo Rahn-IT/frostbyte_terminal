@@ -147,11 +147,6 @@ where
                 is_current_selected,
             );
 
-            let shaping = if needs_advanced {
-                iced::widget::text::Shaping::Advanced
-            } else {
-                iced::widget::text::Shaping::Basic
-            };
             let cached = if !spans.is_empty() {
                 let text = iced::advanced::Text {
                     content: spans.as_slice(),
@@ -161,7 +156,7 @@ where
                     font: font,
                     align_x: iced::advanced::text::Alignment::Left,
                     align_y: iced::alignment::Vertical::Top,
-                    shaping,
+                    shaping: text::Shaping::Auto,
                     wrapping: iced::widget::text::Wrapping::None,
                 };
                 let paragraph = iced::advanced::text::Paragraph::with_spans(text);
