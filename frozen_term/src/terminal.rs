@@ -30,6 +30,7 @@ enum InnerMessage {
     Input(Vec<u8>),
     Paste(Option<String>),
     Scrolled(ScrollDelta),
+    ScrollTo(usize),
     StartSelection(VisiblePosition),
     MoveSelection(VisiblePosition),
     EndSelection,
@@ -190,6 +191,10 @@ impl Terminal {
 
                 Action::None
             }
+            InnerMessage::ScrollTo(y) => {
+                self.grid.scroll_to(y);
+                Action::None
+            }
             InnerMessage::StartSelection(start) => {
                 self.grid.start_selection(start);
                 Action::None
@@ -266,13 +271,19 @@ impl Terminal {
             From<iced::widget::container::StyleFn<'static, Theme>>,
         Theme: iced::widget::scrollable::Catalog,
     {
+        let total_rows = self.grid.available_lines();
+
         let terminal_widget = row![
             iced::Element::new(TerminalWidget::new(self)),
             Scrollbar::new(
-                self.grid.available_lines() as f32,
-                self.grid.get_scroll() as f32,
-                self.grid.get_size().rows as f32
+                total_rows as u32,
+                self.grid.get_scroll() as u32,
+                self.grid.get_size().rows as u32
             )
+            .on_scroll(move |scroll| {
+                let new_scroll = (total_rows as f32 * scroll) as usize;
+                InnerMessage::ScrollTo(new_scroll)
+            })
         ];
 
         if let Some(position) = self.context_menu_position {

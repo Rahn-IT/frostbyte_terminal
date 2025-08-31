@@ -8,7 +8,7 @@ pub struct Scrollbar<T, Message> {
     count: T,
     scroll: T,
     window: T,
-    on_scroll: Option<Box<dyn Fn(Pixels) -> Message>>,
+    on_scroll: Option<Box<dyn Fn(f32) -> Message>>,
 }
 
 impl<T, Message> Scrollbar<T, Message>
@@ -23,15 +23,26 @@ where
             on_scroll: None,
         }
     }
+
+    pub fn on_scroll(mut self, on_scroll: impl Fn(f32) -> Message + 'static) -> Self {
+        self.on_scroll = Some(Box::new(on_scroll));
+        self
+    }
 }
 
 const WIDTH: f32 = 20.0;
 
 struct State {
-    scroller_grabbed_at: Option<Point>,
+    scroller_grabbed_at: Option<Grab>,
     status: Option<scrollable::Status>,
-    scroller_position_mult: f32,
+    relative_scroll: f32,
+    scroller_space_mult: f32,
     scroller_height_mult: f32,
+}
+
+struct Grab {
+    at: Point,
+    relative_scroll: f32,
 }
 
 impl<T, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Scrollbar<T, Message>
@@ -48,7 +59,8 @@ where
         iced::advanced::widget::tree::State::new(State {
             scroller_grabbed_at: None,
             status: None,
-            scroller_position_mult: 0.0,
+            relative_scroll: 0.0,
+            scroller_space_mult: 0.0,
             scroller_height_mult: 1.0,
         })
     }
@@ -68,8 +80,14 @@ where
         let scroll: Pixels = self.scroll.clone().into();
         let window: Pixels = self.window.clone().into();
 
-        state.scroller_position_mult = scroll.0 / count.0;
         state.scroller_height_mult = (window.0 / count.0).min(1.0);
+        state.relative_scroll = scroll.0 / count.0;
+        let space_left = count.0 - window.0;
+        state.scroller_space_mult = if space_left > 0.0 {
+            scroll.0 / space_left
+        } else {
+            0.0
+        };
 
         iced::advanced::layout::Node::new(Size::new(WIDTH.into(), limits.max().height))
     }
@@ -90,11 +108,14 @@ where
                 let state = state.state.downcast_mut::<State>();
                 let scroller_rect = scroller_rect(
                     layout,
-                    state.scroller_position_mult,
+                    state.scroller_space_mult,
                     state.scroller_height_mult,
                 );
                 if let Some(position) = cursor.position_over(scroller_rect) {
-                    state.scroller_grabbed_at = Some(position);
+                    state.scroller_grabbed_at = Some(Grab {
+                        at: position,
+                        relative_scroll: state.relative_scroll,
+                    });
                     state.status = Some(scrollable::Status::Dragged {
                         is_horizontal_scrollbar_dragged: false,
                         is_vertical_scrollbar_dragged: true,
@@ -110,7 +131,7 @@ where
                     state.scroller_grabbed_at = None;
                     let scroller_rect = scroller_rect(
                         layout,
-                        state.scroller_position_mult,
+                        state.scroller_space_mult,
                         state.scroller_height_mult,
                     );
                     let new_status = if cursor.position_over(scroller_rect).is_some() {
@@ -133,12 +154,21 @@ where
             }
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. }) => {
                 let state = state.state.downcast_mut::<State>();
-                if let Some(grabbed_at) = state.scroller_grabbed_at {
-                    todo!()
+                if let Some(((grabbed, cursor_pos), on_scroll)) = state
+                    .scroller_grabbed_at
+                    .as_ref()
+                    .zip(cursor.position())
+                    .zip(self.on_scroll.as_ref())
+                {
+                    let height_diff = cursor_pos.y - grabbed.at.y;
+                    let relative_scroll_delta = height_diff / layout.bounds().height;
+                    let relative_scroll = grabbed.relative_scroll + relative_scroll_delta;
+
+                    shell.publish(on_scroll(relative_scroll.max(0.0).min(1.0)));
                 } else {
                     let scroller_rect = scroller_rect(
                         layout,
-                        state.scroller_position_mult,
+                        state.scroller_space_mult,
                         state.scroller_height_mult,
                     );
                     let new_status = if cursor.position_over(scroller_rect).is_some() {
@@ -170,16 +200,16 @@ where
         tree: &iced::advanced::widget::Tree,
         renderer: &mut Renderer,
         theme: &Theme,
-        style: &iced::advanced::renderer::Style,
+        _style: &iced::advanced::renderer::Style,
         layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        viewport: &iced::Rectangle,
+        _cursor: iced::advanced::mouse::Cursor,
+        _viewport: &iced::Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State>();
 
         let scroller = scroller_rect(
             layout,
-            state.scroller_position_mult,
+            state.scroller_space_mult,
             state.scroller_height_mult,
         );
 
@@ -218,12 +248,18 @@ where
 
 fn scroller_rect(
     layout: iced::advanced::Layout<'_>,
-    scroller_position_mult: f32,
+    scroller_space_mult: f32,
     scroller_height_mult: f32,
 ) -> Rectangle {
     let mut bounds = layout.bounds();
-    bounds.y = bounds.y + bounds.height * scroller_position_mult;
-    bounds.height = bounds.height * scroller_height_mult;
+    let min_height = bounds.width;
+
+    let calculated_height = (bounds.height * scroller_height_mult).max(min_height);
+    let space_left = bounds.height - calculated_height;
+    let calculated_position = space_left * scroller_space_mult;
+
+    bounds.y += calculated_position;
+    bounds.height = calculated_height;
     bounds
 }
 
