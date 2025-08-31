@@ -110,7 +110,6 @@ where
             let mut current_text = String::new();
             let mut current_attrs = CellAttributes::default();
             let mut spans: Vec<Span<(), R::Font>> = Vec::new();
-            let mut needs_advanced = false;
 
             for (cell_index, cell) in line.visible_cells().enumerate() {
                 let cell_selected = is_maybe_selected(
@@ -133,9 +132,6 @@ where
                     current_text = String::new();
                 }
                 let cell_str = cell.str();
-                if !cell_str.is_ascii() {
-                    needs_advanced = true;
-                }
                 current_text.push_str(cell_str);
             }
 
