@@ -1,3 +1,5 @@
+#![doc = include_str!("../Readme.md")]
+
 mod scrollbar;
 mod terminal;
 mod terminal_grid;

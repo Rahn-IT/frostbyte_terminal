@@ -9,7 +9,7 @@ I just went ahead and kept working on it a bit.
 ## Widget
 
 If you want to integrate a terminal into your iced application or build your own terminal,
-take a look at [the frozen_term widget](frozen_term/Readme.md)
+take a look at [the frozen_term widget](https://rahn-it.github.io/frostbyte_terminal/frozen_term/)
 
 Many thanks also to the developers of [Wezterm](https://github.com/wezterm/wezterm)
 as I've stolen all the ANSI and text grid functionality from them.
