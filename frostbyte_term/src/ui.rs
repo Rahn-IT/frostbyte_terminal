@@ -18,7 +18,7 @@ use iced::{
     futures::{SinkExt, Stream},
     keyboard,
     stream::channel,
-    widget::{button, center, column, row, text},
+    widget::{button, center, column, container, row, text},
     window,
 };
 #[cfg(target_os = "linux")]
@@ -334,13 +334,14 @@ impl UI {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
         let tab_view: Element<Message> = match selected_terminal {
-            Some(terminal) => terminal
-                .view()
-                .map(move |message| Message::LocalTerminal {
+            Some(terminal) => {
+                container(terminal.view().map(move |message| Message::LocalTerminal {
                     id: self.selected_tab,
                     message,
-                })
-                .into(),
+                }))
+                .padding(10)
+                .into()
+            }
             None => text("terminal closed").into(),
         };
 

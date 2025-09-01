@@ -4,7 +4,7 @@ use iced::{
     Rectangle, Size, Vector,
     advanced::{text::Paragraph, widget::operation::Focusable},
     mouse::ScrollDelta,
-    widget::row,
+    widget::{container, row},
 };
 
 use crate::{
@@ -319,7 +319,7 @@ impl Terminal {
                 .height(iced::Length::Shrink);
 
             // Position the menu using padding to offset it to the cursor position
-            let positioned_container = iced::widget::container(positioned_menu)
+            let positioned_container = container(positioned_menu)
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)
                 .padding(iced::Padding {

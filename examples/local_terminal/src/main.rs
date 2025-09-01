@@ -1,7 +1,7 @@
 use frozen_term::local_terminal::{self, InputSequence, LocalTerminal};
 use iced::{
     Length, Task,
-    widget::{button, column, row, text},
+    widget::{button, column, container, row, text},
 };
 
 pub fn main() {
@@ -64,7 +64,7 @@ impl UI {
 
     fn view(&'_ self) -> iced::Element<'_, Message> {
         row![
-            self.terminal.view().map(Message::Terminal),
+            container(self.terminal.view().map(Message::Terminal)).padding(10),
             column![
                 button(text("Home"))
                     .width(Length::Fill)

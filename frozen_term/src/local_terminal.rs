@@ -142,11 +142,7 @@ impl LocalTerminal {
     pub fn view<'a>(&'a self) -> Element<'a, Message> {
         match &self.state {
             State::Starting => center(text!("opening pty...")).into(),
-            State::Active(_) => {
-                center(self.display.view().map(InnerMessage::Terminal).map(Message))
-                    .padding(10)
-                    .into()
-            }
+            State::Active(_) => self.display.view().map(InnerMessage::Terminal).map(Message),
             State::Closed => center(text!("pty closed")).height(Length::Fill).into(),
         }
     }
