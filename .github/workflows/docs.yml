@@ -31,10 +31,12 @@ jobs:
         uses: actions/configure-pages@v3
       - name: Build docs
         run: cargo doc --no-deps --all-features -p frozen_term
+      - name: Copy redirect file as index.html
+        run: cp docs/redirect.html target/doc/index.html
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./target/doc/frozen_term/
+          path: ./target/doc
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
