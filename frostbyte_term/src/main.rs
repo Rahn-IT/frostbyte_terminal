@@ -25,7 +25,7 @@ fn run_iced() {
         .font(FONT)
         .subscription(UI::subscription)
         .title(UI::title)
-        .theme(|_, _| iced::Theme::Dark)
+        .theme(iced::Theme::Dark)
         .antialiasing(true)
         .run()
         .unwrap();

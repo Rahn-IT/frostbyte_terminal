@@ -341,7 +341,7 @@ pub struct Id(iced::advanced::widget::Id);
 
 impl Id {
     /// Creates a custom [`Id`].
-    pub fn new(id: impl Into<std::borrow::Cow<'static, str>>) -> Self {
+    pub fn new(id: &'static str) -> Self {
         Self(iced::advanced::widget::Id::new(id))
     }
 
@@ -365,11 +365,11 @@ impl From<&'static str> for Id {
     }
 }
 
-impl From<String> for Id {
-    fn from(id: String) -> Self {
-        Self::new(id)
-    }
-}
+// impl From<String> for Id {
+//     fn from(id: String) -> Self {
+//         Self::new(id)
+//     }
+// }
 
 struct TerminalWidget<'a> {
     term: &'a Terminal,

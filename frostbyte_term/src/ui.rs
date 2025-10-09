@@ -242,7 +242,7 @@ impl UI {
                             let x = (monitor_res.width - window_size.width) / 2.0;
                             iced::Point::new(x, 0.0)
                         }),
-                        size: iced::window::Size::FromScreensize(|monitor_res| {
+                        size: iced::window::Size::from_screen_size(|monitor_res| {
                             iced::Size::new(monitor_res.width * 0.8, monitor_res.height * 0.45)
                         }),
                         level: window::Level::AlwaysOnTop,
@@ -330,7 +330,7 @@ impl UI {
         }
     }
 
-    pub fn view<'a>(&'a self, _id: window::Id) -> Element<'a, Message> {
+    pub fn view(&'_ self, _id: window::Id) -> Element<'_, Message> {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
         let tab_view: Element<Message> = match selected_terminal {
@@ -375,7 +375,7 @@ impl UI {
                         .height(Length::Fill)
                         .on_press(Message::OpenTab),
                 )
-                .push(iced::widget::horizontal_space())
+                .push(iced::widget::space::horizontal())
                 .push(
                     button(center(text("X")))
                         .style(button::danger)
