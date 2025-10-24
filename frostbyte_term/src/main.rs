@@ -41,7 +41,7 @@ fn run_layershell() {
     )
     .font(FONT)
     .subscription(UI::subscription)
-    .theme(|_, _| iced::Theme::Dark)
+    .theme(|_: &'_ UI, _| iced::Theme::Dark)
     .antialiasing(true)
     .layer_settings(LayerShellSettings {
         start_mode: StartMode::Background,

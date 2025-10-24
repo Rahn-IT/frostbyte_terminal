@@ -11,8 +11,8 @@ frozen_term = { path = "../frozen_term", features = ["local-terminal"] }
 iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
 async_pty = { path = "../async_pty" }
 global-hotkey = "0.7.0"
-tray-icon = "0.21.1"
-tokio = "1.47.1"
+tray-icon = "0.21.2"
+tokio = "1.48.0"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 signal-hook = "0.3.18"
 
