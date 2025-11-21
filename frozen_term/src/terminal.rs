@@ -475,6 +475,7 @@ where
                     .unwrap_or(true);
 
                 if id_changed {
+                    state.prerenderer.clear_cache();
                     state.last_id = Some(self.term.id.clone());
                     shell.publish(InnerMessage::IdChanged);
                 }

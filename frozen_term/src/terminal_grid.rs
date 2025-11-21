@@ -34,6 +34,7 @@ where
 {
     type Grid: TerminalGrid;
 
+    fn clear_cache(&mut self);
     fn update(&mut self, grid: &Self::Grid, renderer: &R);
     fn visible_rows<'a>(
         &'a self,

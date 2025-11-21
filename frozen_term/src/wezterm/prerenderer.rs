@@ -40,6 +40,12 @@ where
 {
     type Grid = WeztermGrid;
 
+    fn clear_cache(&mut self) {
+        self.cache_rows.clear();
+        self.row_cache_start = 0;
+        self.visible_cache_range = 0..0;
+    }
+
     fn update(&mut self, grid: &Self::Grid, renderer: &R) {
         let screen = grid.terminal.screen();
 
