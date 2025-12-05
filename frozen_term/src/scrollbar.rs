@@ -252,7 +252,7 @@ where
                 border: style.vertical_rail.scroller.border,
                 ..Quad::default()
             },
-            style.vertical_rail.scroller.color,
+            style.vertical_rail.scroller.background,
         );
     }
 }

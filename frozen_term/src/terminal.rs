@@ -464,8 +464,8 @@ where
             iced::Event::Window(iced::window::Event::RedrawRequested(now)) => {
                 let state = state.state.downcast_mut::<State<Renderer>>();
 
-                let widget_width = layout.bounds().width - self.term.style.padding.horizontal();
-                let widget_height = layout.bounds().height - self.term.style.padding.vertical();
+                let widget_width = layout.bounds().width - self.term.style.padding.x();
+                let widget_height = layout.bounds().height - self.term.style.padding.y();
 
                 // check if id has changed
                 let id_changed = state
@@ -693,8 +693,7 @@ where
                         let position =
                             bounds.position() - Vector::new(span.padding.left, span.padding.top);
 
-                        let size = bounds.size()
-                            + Size::new(span.padding.horizontal(), span.padding.vertical());
+                        let size = bounds.size() + Size::new(span.padding.x(), span.padding.y());
 
                         let position = position + translation + iced::Vector::new(0.0, y_offset);
                         let bounds = Rectangle::new(position, size);

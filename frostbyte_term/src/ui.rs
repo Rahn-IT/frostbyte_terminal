@@ -235,25 +235,46 @@ impl UI {
         } else {
             let task = match self.mode {
                 Mode::Winit => {
-                    let settings = window::Settings {
-                        decorations: false,
-                        resizable: false,
-                        position: window::Position::SpecificWith(|window_size, monitor_res| {
-                            let x = (monitor_res.width - window_size.width) / 2.0;
-                            iced::Point::new(x, 0.0)
-                        }),
-                        size: iced::window::Size::from_screen_size(|monitor_res| {
-                            iced::Size::new(monitor_res.width * 0.8, monitor_res.height * 0.45)
-                        }),
-                        level: window::Level::AlwaysOnTop,
+                    // let settings = window::Settings {
+                    //     decorations: false,
+                    //     resizable: false,
+                    //     position: window::Position::SpecificWith(|window_size, monitor_res| {
+                    //         let x = (monitor_res.width - window_size.width) / 2.0;
+                    //         iced::Point::new(x, 0.0)
+                    //     }),
+                    //     size: iced::window::Size::from_screen_size(|monitor_res| {
+                    //         iced::Size::new(monitor_res.width * 0.8, monitor_res.height * 0.45)
+                    //     }),
+                    //     level: window::Level::AlwaysOnTop,
 
-                        ..Default::default()
-                    };
+                    //     ..Default::default()
+                    // };
 
-                    let (id, task) = window::open(settings);
-                    self.window_id = Some(id);
+                    window::list_monitors().then(|monitors| {
+                        let monitor = monitors.first().unwrap();
+                        let size = iced::Size::new(
+                            monitor_size.size().width * 0.8,
+                            monitor_res.size().height * 0.45,
+                        );
+                        let position =
+                            Point::new(monitor.position().x as f32, monitor.position().y as f32);
 
-                    task.map(Message::WindowOpened)
+                        let settings = window::Settings {
+                            decorations: false,
+                            resizable: false,
+                            position: window::Position::Specific(position),
+                            ..Default::default()
+                        };
+
+                        let (id, task) = window::open(settings);
+
+                        task.map(Message::WindowOpened)
+                    })
+
+                    // let (id, task) = window::open(settings);
+                    // self.window_id = Some(id);
+
+                    // task.map(Message::WindowOpened)
                 }
                 #[cfg(target_os = "linux")]
                 Mode::Layershell => {
