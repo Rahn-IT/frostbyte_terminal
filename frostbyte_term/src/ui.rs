@@ -182,6 +182,7 @@ impl UI {
                 };
             }
             Message::WindowOpened(id) => {
+                self.window_id = Some(id);
                 if let Some(term) = self.terminals.get(&self.selected_tab) {
                     Task::batch([window::gain_focus(id), term.focus()])
                 } else {
