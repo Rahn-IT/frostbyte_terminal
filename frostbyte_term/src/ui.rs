@@ -14,7 +14,7 @@ use signal_hook::flag as signal_flag;
 use frozen_term::local_terminal::{self, LocalTerminal};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
-    Element, Font, Length, Subscription, Task,
+    Element, Font, Length, Point, Subscription, Task,
     futures::{SinkExt, Stream},
     keyboard,
     stream::channel,
@@ -252,18 +252,24 @@ impl UI {
                     // };
 
                     window::list_monitors().then(|monitors| {
-                        let monitor = monitors.first().unwrap();
+                        let monitor = monitors.get(1).unwrap();
                         let size = iced::Size::new(
-                            monitor_size.size().width * 0.8,
-                            monitor_res.size().height * 0.45,
+                            monitor.size().width * 0.8,
+                            monitor.size().height * 0.45,
                         );
-                        let position =
-                            Point::new(monitor.position().x as f32, monitor.position().y as f32);
+                        let position = Point::new(
+                            monitor.position().x as f32 * monitor.scale_factor() as f32,
+                            monitor.position().y as f32 * monitor.scale_factor() as f32,
+                        );
+
+                        println!("Monitor size: {:?}", monitor.size());
+                        println!("Monitor position: {:?}", monitor.position());
 
                         let settings = window::Settings {
                             decorations: false,
                             resizable: false,
                             position: window::Position::Specific(position),
+                            size,
                             ..Default::default()
                         };
 
@@ -425,20 +431,35 @@ impl UI {
         Subscription::batch([
             window::close_events().map(|_| Message::WindowClosed),
             Subscription::run(poll_events_sub),
-            keyboard::on_key_press(|key, modifiers| match key {
-                keyboard::Key::Named(keyboard::key::Named::Pause) => None,
-                keyboard::Key::Character(c) => match c.as_str() {
-                    "t" | "T" => {
-                        if modifiers.control() && modifiers.shift() {
-                            Some(Message::OpenTab)
-                        } else {
-                            None
-                        }
+            keyboard::listen().filter_map(|event| {
+                if let keyboard::Event::KeyPressed {
+                    key,
+                    modified_key,
+                    physical_key,
+                    location,
+                    modifiers,
+                    text,
+                    repeat,
+                } = event
+                {
+                    match key {
+                        keyboard::Key::Named(keyboard::key::Named::Pause) => None,
+                        keyboard::Key::Character(c) => match c.as_str() {
+                            "t" | "T" => {
+                                if modifiers.control() && modifiers.shift() {
+                                    Some(Message::OpenTab)
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        },
+                        keyboard::Key::Named(_named) => None,
+                        keyboard::Key::Unidentified => None,
                     }
-                    _ => None,
-                },
-                keyboard::Key::Named(_named) => None,
-                keyboard::Key::Unidentified => None,
+                } else {
+                    None
+                }
             }),
         ])
     }
