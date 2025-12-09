@@ -252,24 +252,20 @@ impl UI {
                     // };
 
                     window::list_monitors().then(|monitors| {
-                        let monitor = monitors.get(1).unwrap();
+                        let monitor = monitors.iter().skip(1).next().unwrap();
                         let size = iced::Size::new(
                             monitor.size().width * 0.8,
                             monitor.size().height * 0.45,
                         );
-                        let position = Point::new(
-                            monitor.position().x as f32 * monitor.scale_factor() as f32,
-                            monitor.position().y as f32 * monitor.scale_factor() as f32,
-                        );
-
-                        println!("Monitor size: {:?}", monitor.size());
-                        println!("Monitor position: {:?}", monitor.position());
+                        let position = Point::new((monitor.size().width - size.width) / 2.0, 0.0);
+                        let position = Point::ORIGIN;
 
                         let settings = window::Settings {
                             decorations: false,
                             resizable: false,
                             position: window::Position::Specific(position),
                             size,
+                            monitor_index: Some(monitor.index()),
                             ..Default::default()
                         };
 
