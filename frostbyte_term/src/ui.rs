@@ -47,6 +47,8 @@ pub enum Message {
     NextMonitor,
     PreviousMonitor,
     UpdateMonitor(MonitorIndex),
+    PreviousTab,
+    NextTab,
 }
 
 enum Mode {
@@ -176,6 +178,22 @@ impl UI {
                     }
                 }
                 self.switch_tab(id);
+                Task::none()
+            }
+            Message::NextTab => {
+                let selected = self.selected_tab;
+                let next = self.terminals.keys().find(|key| **key > selected);
+                if let Some(next) = next {
+                    self.switch_tab(*next);
+                }
+                Task::none()
+            }
+            Message::PreviousTab => {
+                let selected = self.selected_tab;
+                let previous = self.terminals.keys().rev().find(|key| **key < selected);
+                if let Some(next) = previous {
+                    self.switch_tab(*next);
+                }
                 Task::none()
             }
             Message::CloseTab(id) => self.close_tab(id),
@@ -487,6 +505,34 @@ impl UI {
                             }
                             _ => None,
                         },
+                        keyboard::Key::Named(keyboard::key::Named::ArrowLeft) => {
+                            if modifiers.control() && modifiers.shift() {
+                                Some(Message::PreviousTab)
+                            } else {
+                                None
+                            }
+                        }
+                        keyboard::Key::Named(keyboard::key::Named::ArrowRight) => {
+                            if modifiers.control() && modifiers.shift() {
+                                Some(Message::NextTab)
+                            } else {
+                                None
+                            }
+                        }
+                        keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
+                            if modifiers.control() && modifiers.shift() {
+                                Some(Message::NextMonitor)
+                            } else {
+                                None
+                            }
+                        }
+                        keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
+                            if modifiers.control() && modifiers.shift() {
+                                Some(Message::PreviousMonitor)
+                            } else {
+                                None
+                            }
+                        }
                         keyboard::Key::Named(_named) => None,
                         keyboard::Key::Unidentified => None,
                     }
@@ -609,6 +655,22 @@ impl Hotkey {
     ) -> impl 'static + Fn(&iced::keyboard::Key, &iced::keyboard::Modifiers) -> bool {
         let (hotkey, hotkey_modifiers) = self.iced();
         move |key: &iced::keyboard::Key, modifiers: &iced::keyboard::Modifiers| {
+            if modifiers.control() && modifiers.shift() {
+                match key {
+                    keyboard::Key::Named(named) => match named {
+                        keyboard::key::Named::ArrowLeft => return true,
+                        keyboard::key::Named::ArrowRight => return true,
+                        keyboard::key::Named::ArrowUp => return true,
+                        keyboard::key::Named::ArrowDown => return true,
+                        _ => {}
+                    },
+                    keyboard::Key::Character(character) => match character.as_str() {
+                        "T" => return true,
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
             if key == &iced::keyboard::Key::Character("T".into())
                 && modifiers.control()
                 && modifiers.shift()
