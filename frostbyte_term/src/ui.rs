@@ -14,12 +14,13 @@ use signal_hook::flag as signal_flag;
 use frozen_term::local_terminal::{self, LocalTerminal};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
+    Alignment::Center,
     Element, Font, Length, Point, Subscription, Task,
     futures::{SinkExt, Stream},
     keyboard,
     stream::channel,
     widget::{button, center, column, container, row, text},
-    window::{self, PositionOnMonitor},
+    window::{self, MonitorIndex, PositionOnMonitor},
 };
 #[cfg(target_os = "linux")]
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
@@ -40,10 +41,12 @@ pub enum Message {
     Hotkey,
     WindowOpened(window::Id),
     CloseWindow,
-    WindowClosed,
     Shutdown,
     // This does nothing as is only here to trigger a redraw
     Redraw,
+    NextMonitor,
+    PreviousMonitor,
+    UpdateMonitor(MonitorIndex),
 }
 
 enum Mode {
@@ -64,6 +67,7 @@ pub struct UI {
     hotkey_id: u32,
     _tray_icon: Option<TrayIcon>,
     mode: Mode,
+    monitor: MonitorIndex,
 }
 
 impl Debug for UI {
@@ -137,6 +141,7 @@ impl UI {
                 hotkey,
                 _tray_icon: tray_icon,
                 mode,
+                monitor: MonitorIndex(0),
             },
             Task::none(),
         )
@@ -190,13 +195,32 @@ impl UI {
                 }
             }
             Message::CloseWindow => self.close_window(),
-            Message::WindowClosed => {
-                self.window_id = None;
-                Task::none()
-            }
             Message::Shutdown => iced::exit(),
             // only here to trigger a redraw
             Message::Redraw => Task::none(),
+            Message::NextMonitor => {
+                let mut index = self.monitor;
+                index.0 += 1;
+                window::list_monitors().then(move |monitors| {
+                    if monitors.get(index).is_some() {
+                        Task::done(Message::UpdateMonitor(index))
+                    } else {
+                        Task::none()
+                    }
+                })
+            }
+            Message::PreviousMonitor => {
+                if self.monitor.0 == 0 {
+                    Task::none()
+                } else {
+                    self.monitor.0 -= 1;
+                    Task::batch([self.close_window(), self.open_window()])
+                }
+            }
+            Message::UpdateMonitor(index) => {
+                self.monitor = index;
+                Task::batch([self.close_window(), self.open_window()])
+            }
             #[cfg(target_os = "linux")]
             Message::AnchorChange { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
@@ -250,9 +274,12 @@ impl UI {
 
                     //     ..Default::default()
                     // };
+                    let monitor = self.monitor;
 
-                    window::list_monitors().then(|monitors| {
-                        let monitor = monitors.iter().next().unwrap();
+                    window::list_monitors().then(move |monitors| {
+                        let monitor = monitors
+                            .get(monitor)
+                            .unwrap_or_else(|| monitors.primary_or_first());
                         let size = iced::Size::new(
                             monitor.size().width * 0.8,
                             monitor.size().height * 0.45,
@@ -400,7 +427,19 @@ impl UI {
                 )
                 .push(iced::widget::space::horizontal())
                 .push(
-                    button(center(text("X")))
+                    button(center(text("<").size(20).align_y(Center)))
+                        .width(40)
+                        .height(Length::Fill)
+                        .on_press(Message::PreviousMonitor),
+                )
+                .push(
+                    button(center(text(">").size(20).align_y(Center)))
+                        .width(40)
+                        .height(Length::Fill)
+                        .on_press(Message::NextMonitor),
+                )
+                .push(
+                    button(center(text("X").size(20).align_y(Center)))
                         .style(button::danger)
                         .width(40)
                         .height(Length::Fill)
@@ -424,7 +463,6 @@ impl UI {
 
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
-            window::close_events().map(|_| Message::WindowClosed),
             Subscription::run(poll_events_sub),
             keyboard::listen().filter_map(|event| {
                 if let keyboard::Event::KeyPressed {
