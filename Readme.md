@@ -32,6 +32,18 @@ This is still really basic. If you have requests for the widget or application, 
 
 If your compositor doesn't support global hotkeys, you can set a hotkey to execute `pkill -USR1 frostbyte_term`.
 
+## Shortcuts
+
+| Shortcut                  | Action           |
+|---------------------------|------------------|
+| Ctrl + Shift + C          | Copy             |
+| Ctrl + Shift + V          | Paste            |
+| Ctrl + Shift + T          | Open new Tab     |
+| Ctrl + Shift + ArrowLeft  | Next Tab         |
+| Ctrl + Shift + ArrowRight | Previous Tab     |
+| Ctrl + Shift + ArrowUp    | Next Monitor     |
+| Ctrl + Shift + ArrowDown  | Previous Monitor |
+
 ## Architecture
 
 Frostbyte uses the [rust ui framework iced.](https://iced.rs/)
@@ -54,10 +66,7 @@ The widget is designed to be plugged into any terminal backend, be it serial, ov
 ### frostbyte_term
 
 Frostbyte is the actual application which uses the widget.
-
-It has a submodule `local_terminal` which handles the creation of the pty and
-facilitates the required communication between the component and the pty.
-If you want to see an example of how to use `frozen_term`, this is the place to look.
+It handles the actual window and the shortcuts.
 
 ## Attribution
 
