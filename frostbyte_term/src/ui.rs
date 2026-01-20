@@ -19,7 +19,7 @@ use iced::{
     keyboard,
     stream::channel,
     widget::{button, center, column, container, row, text},
-    window,
+    window::{self, PositionOnMonitor},
 };
 #[cfg(target_os = "linux")]
 use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
@@ -252,26 +252,25 @@ impl UI {
                     // };
 
                     window::list_monitors().then(|monitors| {
-                        let monitor = monitors.iter().skip(1).next().unwrap();
+                        let monitor = monitors.iter().next().unwrap();
                         let size = iced::Size::new(
                             monitor.size().width * 0.8,
                             monitor.size().height * 0.45,
                         );
                         let position = Point::new((monitor.size().width - size.width) / 2.0, 0.0);
-                        let position = Point::ORIGIN;
 
                         let settings = window::Settings {
                             decorations: false,
                             resizable: false,
-                            position: window::Position::Specific(position),
+                            position: window::Position::Specific(PositionOnMonitor {
+                                monitor_index: Some(monitor.index()),
+                                position: position,
+                            }),
                             size,
-                            monitor_index: Some(monitor.index()),
                             ..Default::default()
                         };
 
-                        let (id, task) = window::open(settings);
-
-                        task.map(Message::WindowOpened)
+                        window::open(settings).1.map(Message::WindowOpened)
                     })
 
                     // let (id, task) = window::open(settings);

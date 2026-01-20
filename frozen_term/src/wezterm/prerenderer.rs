@@ -160,6 +160,8 @@ where
                     align_y: iced::alignment::Vertical::Top,
                     shaping: text::Shaping::Auto,
                     wrapping: iced::widget::text::Wrapping::None,
+                    // TODO: figure out how to use this
+                    hint_factor: None,
                 };
                 let paragraph = iced::advanced::text::Paragraph::with_spans(text);
                 Some((paragraph, spans))
