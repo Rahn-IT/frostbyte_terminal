@@ -429,12 +429,12 @@ impl UI {
             keyboard::listen().filter_map(|event| {
                 if let keyboard::Event::KeyPressed {
                     key,
-                    modified_key,
-                    physical_key,
-                    location,
+                    modified_key: _,
+                    physical_key: _,
+                    location: _,
                     modifiers,
-                    text,
-                    repeat,
+                    text: _,
+                    repeat: _,
                 } = event
                 {
                     match key {
