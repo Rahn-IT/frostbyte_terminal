@@ -149,8 +149,7 @@ impl UI {
         )
     }
 
-    #[must_use]
-    pub fn update<'a>(&'a mut self, message: Message) -> Task<Message> {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::LocalTerminal { id, message } => {
                 let term = match self.terminals.get_mut(&id) {
@@ -172,13 +171,14 @@ impl UI {
             Message::OpenTab => self.open_tab(),
             Message::SwitchTab(id) => {
                 // refocus tab if clicking on the already selected one
-                if self.selected_tab == id {
-                    if let Some(term) = self.terminals.get(&id) {
-                        return term.focus();
-                    }
+                if self.selected_tab == id
+                    && let Some(term) = self.terminals.get(&id)
+                {
+                    term.focus()
+                } else {
+                    self.switch_tab(id);
+                    Task::none()
                 }
-                self.switch_tab(id);
-                Task::none()
             }
             Message::NextTab => {
                 let selected = self.selected_tab;
@@ -198,11 +198,11 @@ impl UI {
             }
             Message::CloseTab(id) => self.close_tab(id),
             Message::Hotkey => {
-                return if self.window_id.is_some() {
+                if self.window_id.is_some() {
                     self.close_window()
                 } else {
                     self.open_window()
-                };
+                }
             }
             Message::WindowOpened(id) => {
                 self.window_id = Some(id);
