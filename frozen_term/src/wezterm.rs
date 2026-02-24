@@ -208,9 +208,20 @@ impl TerminalGrid for WeztermGrid {
 
     fn selected_text(&self) -> Option<String> {
         let selection = self.selection.get_selection()?;
-        let screen = self.terminal.screen();
+        let min_row = self.min_scroll();
+        let max_row_exclusive = self.max_scroll() + self.terminal.screen().physical_rows;
+        let start_row = selection.start.y.clamp(min_row, max_row_exclusive);
+        let end_row_exclusive = selection
+            .end
+            .y
+            .saturating_add(1)
+            .clamp(min_row, max_row_exclusive);
 
-        let range = selection.start.y..(selection.end.y + 1).min(screen.scrollback_rows());
+        if start_row >= end_row_exclusive {
+            return None;
+        }
+
+        let range = start_row..end_row_exclusive;
 
         let mut clipboard = String::new();
 
