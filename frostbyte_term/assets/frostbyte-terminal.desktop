@@ -1,8 +1,8 @@
 [Desktop Entry]
 Name=Frostbyte Terminal
 Comment=A rust based dropdown terminal
-Exec=frostbyte-terminal
-Icon=frostbyte-terminal
+Exec=frostbyte_terminal
+Icon=frostbyte_terminal
 Type=Application
 Terminal=false
 Categories=Utility;

@@ -2,3 +2,6 @@ src/
 pkg/
 target/
 *.tar.gz
+*.tar.zst
+*.log
+.SRCINFO
