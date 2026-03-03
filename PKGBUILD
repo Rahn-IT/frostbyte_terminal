@@ -20,6 +20,6 @@ package() {
   cd "$pkgname-$pkgver"
   install -Dm755 "target/release/frostbyte_term" "$pkgdir/usr/bin/$pkgname"
   install -Dm644 "frostbyte_term/assets/icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
-  install -Dm644 "frostbyte_term/assets/frostbyte-terminal.desktop" -t "$pkgdir/usr/share/applications"
+  install -Dm644 "frostbyte_term/assets/frostbyte_terminal.desktop" -t "$pkgdir/usr/share/applications"
   # Install any additional files (e.g., licenses, configs) here
 }
