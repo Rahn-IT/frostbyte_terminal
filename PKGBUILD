@@ -9,7 +9,7 @@ license=('MIT') # Or your license
 depends=()      # List runtime dependencies here
 makedepends=('cargo' 'rust')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('e8dbe17a9b0f4f82c26f72c0612a9966effb185fd7220f4ff7800648f67d2bb9')
+sha256sums=('a92fd185aa1455130ce2083d2b4786352641488d31b1dbb8e78aca98f8944491')
 
 build() {
   ls
