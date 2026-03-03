@@ -9,7 +9,7 @@ license=('MIT')                                                                 
 depends=('hicolor-icon-theme' 'glibc' 'gdk-pixbuf2' 'glib2' 'xdotool' 'gtk3' 'libgcc') # List runtime dependencies here
 makedepends=('cargo' 'rust' 'cairo' 'atk')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('a92fd185aa1455130ce2083d2b4786352641488d31b1dbb8e78aca98f8944491')
+sha256sums=('c237ce03285f5082e3832a9be4f3a058b58f89b967bb541ea202c6d17ba923d1')
 
 build() {
   cd "$pkgname-$pkgver"
