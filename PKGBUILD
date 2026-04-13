@@ -1,6 +1,6 @@
 # Maintainer: acul009 <acul009@gmail.com>
 pkgname=frostbyte_terminal
-pkgver=0.2.6 # Match your Cargo.toml version
+pkgver=0.2.7
 pkgrel=1
 pkgdesc="A rust based cross platform dropdown terminal inspired by yakuake"
 arch=('x86_64')
@@ -9,7 +9,7 @@ license=('MIT')
 depends=('hicolor-icon-theme' 'glibc' 'gdk-pixbuf2' 'glib2' 'xdotool' 'gtk3' 'libgcc')
 makedepends=('cargo' 'rust' 'cairo' 'atk')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('c237ce03285f5082e3832a9be4f3a058b58f89b967bb541ea202c6d17ba923d1')
+sha256sums=('c0db9f66e15bcc5d204c5aeb12feb9520120a8a4c52da194b1ba307ecfe8609d')
 
 build() {
   cd "$pkgname-$pkgver"
