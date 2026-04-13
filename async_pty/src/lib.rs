@@ -48,7 +48,8 @@ impl PtyProcess {
 
             let pair = pty_system.openpty(size.into())?;
 
-            let shell_cmd = CommandBuilder::new(SHELL.to_owned());
+            let mut shell_cmd = CommandBuilder::new(SHELL.to_owned());
+            shell_cmd.env("TERM", "xterm-256color");
 
             let child = pair.slave.spawn_command(shell_cmd)?;
             drop(pair.slave);
