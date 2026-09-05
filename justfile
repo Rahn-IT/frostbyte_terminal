@@ -1,20 +1,25 @@
-
+set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # list commands also default
 list:
     @just --list
 
-install:
-    rm -f frostbyte_terminal-*.tar.zst
-    rm -f frostbyte_terminal-*.log
+# Build the GitHub release in a clean Arch chroot.
+build:
     pkgctl build
-    sudo pacman -U --noconfirm frostbyte_terminal-*.pkg.tar.zst
-    rm -f frostbyte_terminal-*.tar.zst
-    rm -f frostbyte_terminal-*.log
 
+# Install exactly the package paths reported by makepkg, keeping build logs.
+install: build
+    makepkg --packagelist | xargs -r -d '\n' sudo pacman -U --noconfirm
+
+# Run after publishing the GitHub tag matching frostbyte_term/Cargo.toml.
 pkg-update:
-    sed -i "s/^pkgver=.*/pkgver=$(grep '^version' frostbyte_term/Cargo.toml | head -1 | cut -d '"' -f2)/" PKGBUILD
-    sed -i "s/^sha256sums=.*/$(makepkg --geninteg -p PKGBUILD | grep "^sha256sums=")/" PKGBUILD
+    version=$(sed -n '/^version = /{s/.*"\(.*\)".*/\1/p;q;}' frostbyte_term/Cargo.toml); \
+    test -n "$version"; \
+    sed -i "s/^pkgver=.*/pkgver=$version/" PKGBUILD
+    checksums=$(makepkg --geninteg -p PKGBUILD | grep '^sha256sums='); \
+    sed -i "s/^sha256sums=.*/$checksums/" PKGBUILD
+    makepkg --printsrcinfo > .SRCINFO
 
 run:
     cargo run --release

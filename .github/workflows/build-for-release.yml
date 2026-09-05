@@ -1,32 +1,49 @@
 name: Build Release Binaries
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build Windows .exe
+    name: Build and publish Windows executable
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Setup Cache
-        uses: Swatinem/rust-cache@v2
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $version = cargo metadata --no-deps --format-version 1 |
+            ConvertFrom-Json |
+            Select-Object -ExpandProperty packages |
+            Where-Object name -eq "frostbyte_term" |
+            Select-Object -ExpandProperty version
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match frostbyte_term version $version"
+          }
 
       - name: Build release binary for Windows
-        run: cargo build --release --target x86_64-pc-windows-msvc
+        run: cargo build --release --locked --package frostbyte_term
 
-      - name: Upload Windows release binary
-        uses: softprops/action-gh-release@v2
-        with:
-          files: target/x86_64-pc-windows-msvc/release/*.exe
+      - name: Name release binary
+        shell: pwsh
+        run: Copy-Item target/release/frostbyte_term.exe "frostbyte_terminal-${{ github.ref_name }}-windows-x86_64.exe"
+
+      - name: Create GitHub release
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}"
+          "frostbyte_terminal-${{ github.ref_name }}-windows-x86_64.exe"
+          --repo "${{ github.repository }}"
+          --title "Frostbyte Terminal ${{ github.ref_name }}"
+          --generate-notes
+          --verify-tag
