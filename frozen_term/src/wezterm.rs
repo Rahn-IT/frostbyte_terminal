@@ -139,7 +139,7 @@ impl TerminalGrid for WeztermGrid {
         let diff = self.size.rows.abs_diff(size.rows);
 
         let new_scroll = if size.rows > self.size.rows {
-            self.scroll_offset - diff
+            self.scroll_offset.saturating_sub(diff)
         } else {
             self.scroll_offset + diff
         };
