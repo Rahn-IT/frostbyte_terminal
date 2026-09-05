@@ -8,7 +8,7 @@ use crate::{
     terminal_grid::PreRenderer,
     wezterm::{
         WeztermGrid,
-        selection::{SelectionPosition, is_maybe_selected},
+        selection::{SelectionPosition, is_cell_selected},
     },
 };
 
@@ -117,14 +117,17 @@ where
             let mut current_attrs = CellAttributes::default();
             let mut spans: Vec<Span<(), R::Font>> = Vec::new();
 
-            for (cell_index, cell) in line.visible_cells().enumerate() {
-                let cell_selected = is_maybe_selected(
-                    &selection,
-                    SelectionPosition {
-                        x: cell_index,
-                        y: index,
-                    },
-                );
+            for cell in line.visible_cells() {
+                let cell_selected = selection.as_ref().is_some_and(|selection| {
+                    is_cell_selected(
+                        selection,
+                        SelectionPosition {
+                            x: cell.cell_index(),
+                            y: index,
+                        },
+                        cell.width(),
+                    )
+                });
                 if cell.attrs() != &current_attrs || is_current_selected != cell_selected {
                     push_span(
                         &self.style,

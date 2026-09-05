@@ -7,7 +7,7 @@ use wezterm_term::{PhysRowIndex, TerminalConfiguration, TerminalSize, color::Col
 
 use crate::{
     terminal_grid::{Size, TerminalGrid, VisiblePosition},
-    wezterm::selection::{SelectionPosition, SelectionState, is_selected},
+    wezterm::selection::{SelectionPosition, SelectionState, is_cell_selected},
 };
 
 pub mod prerenderer;
@@ -227,13 +227,14 @@ impl TerminalGrid for WeztermGrid {
 
         for (offset, line) in self.screen_lines(range.clone()).iter().enumerate() {
             let index = range.start + offset;
-            for (cell_index, cell) in line.visible_cells().enumerate() {
-                if is_selected(
+            for cell in line.visible_cells() {
+                if is_cell_selected(
                     &selection,
                     SelectionPosition {
-                        x: cell_index,
+                        x: cell.cell_index(),
                         y: index,
                     },
+                    cell.width(),
                 ) {
                     clipboard.push_str(&cell.str());
                 }

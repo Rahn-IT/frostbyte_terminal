@@ -197,14 +197,6 @@ impl Selection {
     }
 }
 
-pub fn is_maybe_selected(selection: &Option<Selection>, pos: SelectionPosition) -> bool {
-    let Some(selection) = selection else {
-        return false;
-    };
-
-    is_selected(selection, pos)
-}
-
 pub fn is_selected(selection: &Selection, pos: SelectionPosition) -> bool {
     // Check if position is within selection
     if pos.y < selection.start.y || pos.y > selection.end.y {
@@ -223,5 +215,33 @@ pub fn is_selected(selection: &Selection, pos: SelectionPosition) -> bool {
     } else {
         // Middle line of multi-line selection
         true
+    }
+}
+
+/// Returns whether any terminal column occupied by a cell is selected.
+///
+/// Wide cells are represented once by wezterm, at their first column. A
+/// selection can nevertheless begin or end on one of the remaining columns.
+pub fn is_cell_selected(selection: &Selection, pos: SelectionPosition, width: usize) -> bool {
+    let end = pos.x.saturating_add(width.max(1));
+    (pos.x..end).any(|x| is_selected(selection, SelectionPosition { x, y: pos.y }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wide_cell_is_selected_from_its_second_column() {
+        let selection = Selection::new(
+            SelectionPosition { x: 2, y: 0 },
+            SelectionPosition { x: 2, y: 0 },
+        );
+
+        assert!(is_cell_selected(
+            &selection,
+            SelectionPosition { x: 1, y: 0 },
+            2,
+        ));
     }
 }
