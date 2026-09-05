@@ -1,6 +1,6 @@
 [package]
 name = "frostbyte_term"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2024"
 
 [package.metadata.frost_wizard]
