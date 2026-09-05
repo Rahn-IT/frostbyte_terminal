@@ -1247,7 +1247,7 @@ dependencies = [
 [[package]]
 name = "exwlshellev"
 version = "0.20.0"
-source = "git+https://github.com/acul009/exwlshelleventloop.git#bf1a5706cc05229993e59ab8fd6e52e17af83695"
+source = "git+https://github.com/acul009/exwlshelleventloop.git#8506123ec149b0e7731bd8caac05dd5a1a7a27e2"
 dependencies = [
  "calloop 0.14.4",
  "calloop-wayland-source 0.4.1",
@@ -2108,7 +2108,7 @@ dependencies = [
 [[package]]
 name = "iced_exdevtools"
 version = "0.20.0"
-source = "git+https://github.com/acul009/exwlshelleventloop.git#bf1a5706cc05229993e59ab8fd6e52e17af83695"
+source = "git+https://github.com/acul009/exwlshelleventloop.git#8506123ec149b0e7731bd8caac05dd5a1a7a27e2"
 dependencies = [
  "iced_debug",
  "iced_devtools",
@@ -2121,7 +2121,7 @@ dependencies = [
 [[package]]
 name = "iced_exwlshell"
 version = "0.20.0"
-source = "git+https://github.com/acul009/exwlshelleventloop.git#bf1a5706cc05229993e59ab8fd6e52e17af83695"
+source = "git+https://github.com/acul009/exwlshelleventloop.git#8506123ec149b0e7731bd8caac05dd5a1a7a27e2"
 dependencies = [
  "enumflags2",
  "exwlshellev",
@@ -2147,7 +2147,7 @@ dependencies = [
 [[package]]
 name = "iced_exwlshell_macros"
 version = "0.20.0"
-source = "git+https://github.com/acul009/exwlshelleventloop.git#bf1a5706cc05229993e59ab8fd6e52e17af83695"
+source = "git+https://github.com/acul009/exwlshelleventloop.git#8506123ec149b0e7731bd8caac05dd5a1a7a27e2"
 dependencies = [
  "darling",
  "manyhow",
@@ -2239,7 +2239,7 @@ dependencies = [
 [[package]]
 name = "iced_wayland_subscriber"
 version = "0.20.0"
-source = "git+https://github.com/acul009/exwlshelleventloop.git#bf1a5706cc05229993e59ab8fd6e52e17af83695"
+source = "git+https://github.com/acul009/exwlshelleventloop.git#8506123ec149b0e7731bd8caac05dd5a1a7a27e2"
 dependencies = [
  "futures",
  "iced_core",
@@ -5618,7 +5618,7 @@ dependencies = [
 [[package]]
 name = "waycrate_xkbkeycode"
 version = "0.20.0"
-source = "git+https://github.com/acul009/exwlshelleventloop.git#bf1a5706cc05229993e59ab8fd6e52e17af83695"
+source = "git+https://github.com/acul009/exwlshelleventloop.git#8506123ec149b0e7731bd8caac05dd5a1a7a27e2"
 dependencies = [
  "calloop 0.14.4",
  "log",
