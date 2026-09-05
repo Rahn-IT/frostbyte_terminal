@@ -3,7 +3,7 @@
 mod ui;
 
 #[cfg(target_os = "linux")]
-use iced_layershell::settings::{LayerShellSettings, StartMode};
+use iced_exwlshell::settings::{LayerShellSettings, StartMode};
 use ui::UI;
 
 const FONT: &[u8] = include_bytes!("../fonts/RobotoMonoNerdFont-Regular.ttf");
@@ -32,7 +32,7 @@ fn run_iced() {
 
 #[cfg(target_os = "linux")]
 fn run_layershell() {
-    iced_layershell::build_pattern::daemon(
+    iced_exwlshell::build_pattern::daemon(
         UI::start_layershell,
         "frostbyte_terminal",
         UI::update,

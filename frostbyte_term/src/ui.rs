@@ -23,12 +23,12 @@ use iced::{
     window::{self, MonitorIndex, PositionOnMonitor},
 };
 #[cfg(target_os = "linux")]
-use iced_layershell::reexport::{Anchor, NewLayerShellSettings};
+use iced_exwlshell::reexport::{Anchor, NewLayerShellSettings};
 use image::GenericImageView;
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder};
 
 /// Messages emitted by the application and its widgets.
-#[cfg_attr(target_os = "linux", iced_layershell::to_layer_message(multi))]
+#[cfg_attr(target_os = "linux", iced_exwlshell::to_layer_message(multi))]
 #[derive(Debug, Clone)]
 pub enum Message {
     LocalTerminal {
@@ -240,17 +240,11 @@ impl UI {
                 Task::batch([self.close_window(), self.open_window()])
             }
             #[cfg(target_os = "linux")]
-            Message::AnchorChange { .. } => unreachable!(),
-            #[cfg(target_os = "linux")]
             Message::SetInputRegion { .. } => unreachable!(),
-            #[cfg(target_os = "linux")]
-            Message::AnchorSizeChange { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
             Message::LayerChange { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
             Message::MarginChange { .. } => unreachable!(),
-            #[cfg(target_os = "linux")]
-            Message::SizeChange { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
             Message::VirtualKeyboardPressed { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
@@ -269,6 +263,14 @@ impl UI {
             Message::NewInputPanel { .. } => unreachable!(),
             #[cfg(target_os = "linux")]
             Message::NewBaseWindow { .. } => unreachable!(),
+            #[cfg(target_os = "linux")]
+            Message::LayoutChange { .. } => unreachable!(),
+            #[cfg(target_os = "linux")]
+            Message::BlurOptionChange { .. } => unreachable!(),
+            #[cfg(target_os = "linux")]
+            Message::KeyboardInteractivityChange { .. } => unreachable!(),
+            #[cfg(target_os = "linux")]
+            Message::PopUpReposition { .. } => unreachable!(),
         }
     }
 
@@ -325,6 +327,8 @@ impl UI {
                 }
                 #[cfg(target_os = "linux")]
                 Mode::Layershell => {
+                    use std::num::NonZero;
+
                     let id = window::Id::unique();
 
                     self.window_id = Some(id);
@@ -332,7 +336,12 @@ impl UI {
                         settings: NewLayerShellSettings {
                             anchor: Anchor::Top | Anchor::Left | Anchor::Right,
                             margin: Some((0, 200, 0, 200)),
-                            size: Some((0, 600)),
+                            size: iced_exwlshell::settings::LayerSize {
+                                width: iced_exwlshell::settings::Extent::Fill,
+                                height: iced_exwlshell::settings::Extent::Exact(
+                                    NonZero::new(600).expect("600 is non zero"),
+                                ),
+                            },
                             ..Default::default()
                         },
                         id,
@@ -359,7 +368,7 @@ impl UI {
     }
 
     fn open_tab(&mut self) -> Task<Message> {
-        let style = frozen_term::Style::default().font(Font::with_name("RobotoMono Nerd Font"));
+        let style = frozen_term::Style::default().font(Font::new("RobotoMono Nerd Font"));
 
         let (mut local_terminal, terminal_task) = LocalTerminal::start(self.hotkey.filter());
         local_terminal.set_style(style);

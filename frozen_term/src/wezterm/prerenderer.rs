@@ -162,6 +162,7 @@ where
                     wrapping: iced::widget::text::Wrapping::None,
                     // TODO: figure out how to use this
                     hint_factor: None,
+                    ellipsis: text::Ellipsis::None,
                 };
                 let paragraph = iced::advanced::text::Paragraph::with_spans(text);
                 Some((paragraph, spans))

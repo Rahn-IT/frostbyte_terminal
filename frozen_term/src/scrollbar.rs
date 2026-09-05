@@ -1,6 +1,6 @@
 use iced::{
-    Background, Color, Length, Pixels, Point, Rectangle, Size,
-    advanced::{Widget, renderer::Quad},
+    Background, Color, Event, Length, Pixels, Point, Rectangle, Size,
+    advanced::{Layout, Shell, Widget, mouse, renderer::Quad, widget::Tree},
     widget::scrollable,
 };
 
@@ -102,29 +102,25 @@ where
 
     fn update(
         &mut self,
-        state: &mut iced::advanced::widget::Tree,
-        event: &iced::Event,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
         _renderer: &Renderer,
-        _clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, Message>,
-        _viewport: &iced::Rectangle,
+        shell: &mut Shell<'_, Message>,
+        _viewport: &Rectangle,
     ) {
         match event {
             iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) => {
-                let state = state.state.downcast_mut::<State>();
-                let scroller_rect = scroller_rect(
-                    layout,
-                    state.scroller_space_mult,
-                    state.scroller_height_mult,
-                );
+                let tree = tree.state.downcast_mut::<State>();
+                let scroller_rect =
+                    scroller_rect(layout, tree.scroller_space_mult, tree.scroller_height_mult);
                 if let Some(position) = cursor.position_over(scroller_rect) {
-                    state.scroller_grabbed_at = Some(Grab {
+                    tree.scroller_grabbed_at = Some(Grab {
                         at: position,
-                        relative_scroll: state.relative_scroll,
+                        relative_scroll: tree.relative_scroll,
                     });
-                    state.status = Some(scrollable::Status::Dragged {
+                    tree.status = Some(scrollable::Status::Dragged {
                         is_horizontal_scrollbar_dragged: false,
                         is_vertical_scrollbar_dragged: true,
                         is_horizontal_scrollbar_disabled: true,
@@ -134,14 +130,11 @@ where
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
-                let state = state.state.downcast_mut::<State>();
-                if state.scroller_grabbed_at.is_some() {
-                    state.scroller_grabbed_at = None;
-                    let scroller_rect = scroller_rect(
-                        layout,
-                        state.scroller_space_mult,
-                        state.scroller_height_mult,
-                    );
+                let tree = tree.state.downcast_mut::<State>();
+                if tree.scroller_grabbed_at.is_some() {
+                    tree.scroller_grabbed_at = None;
+                    let scroller_rect =
+                        scroller_rect(layout, tree.scroller_space_mult, tree.scroller_height_mult);
                     let new_status = if cursor.position_over(scroller_rect).is_some() {
                         Some(scrollable::Status::Hovered {
                             is_horizontal_scrollbar_hovered: false,
@@ -156,7 +149,7 @@ where
                         })
                     };
 
-                    state.status = new_status;
+                    tree.status = new_status;
                     if let Some(on_scroll_done) = &self.on_scroll_done {
                         shell.publish(on_scroll_done.clone());
                     }
@@ -164,8 +157,8 @@ where
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. }) => {
-                let state = state.state.downcast_mut::<State>();
-                if let Some(((grabbed, cursor_pos), on_scroll)) = state
+                let tree = tree.state.downcast_mut::<State>();
+                if let Some(((grabbed, cursor_pos), on_scroll)) = tree
                     .scroller_grabbed_at
                     .as_ref()
                     .zip(cursor.position())
@@ -177,11 +170,8 @@ where
 
                     shell.publish(on_scroll(relative_scroll.max(0.0).min(1.0)));
                 } else {
-                    let scroller_rect = scroller_rect(
-                        layout,
-                        state.scroller_space_mult,
-                        state.scroller_height_mult,
-                    );
+                    let scroller_rect =
+                        scroller_rect(layout, tree.scroller_space_mult, tree.scroller_height_mult);
                     let new_status = if cursor.position_over(scroller_rect).is_some() {
                         Some(scrollable::Status::Hovered {
                             is_horizontal_scrollbar_hovered: false,
@@ -196,8 +186,8 @@ where
                         })
                     };
 
-                    if new_status != state.status {
-                        state.status = new_status;
+                    if new_status != tree.status {
+                        tree.status = new_status;
                         shell.request_redraw();
                     }
                 };

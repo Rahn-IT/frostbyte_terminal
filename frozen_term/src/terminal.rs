@@ -1,8 +1,16 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use iced::{
-    Rectangle, Size, Vector,
-    advanced::{text::Paragraph, widget::operation::Focusable},
+    Event, Rectangle, Size, Task, Vector,
+    advanced::{
+        Layout, Shell, mouse,
+        text::Paragraph,
+        widget::{Tree, operation::Focusable},
+    },
+    clipboard,
     mouse::ScrollDelta,
     widget::{container, row},
 };
@@ -28,7 +36,7 @@ enum InnerMessage {
         modifiers: iced::keyboard::Modifiers,
     },
     Input(Vec<u8>),
-    Paste(Option<String>),
+    Paste(Result<Arc<clipboard::Content>, clipboard::Error>),
     Scrolled(ScrollDelta),
     ScrollTo(usize),
     ScrollDone,
@@ -173,9 +181,11 @@ impl Terminal {
             }
             InnerMessage::Input(input) => Action::Input(input),
             InnerMessage::Paste(paste) => {
-                if let Some(paste) = paste {
-                    if let Some(input) = self.grid.paste(&paste) {
-                        return Action::Input(input);
+                if let Ok(paste) = paste {
+                    if let clipboard::Content::Text(text) = paste.as_ref() {
+                        if let Some(input) = self.grid.paste(&text) {
+                            return Action::Input(input);
+                        }
                     }
                 }
                 Action::None
@@ -231,7 +241,11 @@ impl Terminal {
 
     fn copy(&self) -> Action {
         if let Some(selected_text) = self.grid.selected_text() {
-            Action::Run(iced::clipboard::write(selected_text).chain(self.focus()))
+            Action::Run(
+                iced::clipboard::write(selected_text)
+                    .then(|_| Task::done(Message(InnerMessage::ContextMenuCopy)))
+                    .chain(self.focus()),
+            )
         } else {
             Action::Run(self.focus())
         }
@@ -239,7 +253,7 @@ impl Terminal {
 
     fn paste(&self) -> Action {
         Action::Run(
-            iced::clipboard::read()
+            iced::clipboard::read(clipboard::Kind::Text)
                 .map(InnerMessage::Paste)
                 .map(Message)
                 .chain(self.focus()),
@@ -451,18 +465,17 @@ where
 
     fn update(
         &mut self,
-        state: &mut iced::advanced::widget::Tree,
-        event: &iced::Event,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
         renderer: &Renderer,
-        _clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, InnerMessage>,
-        _viewport: &iced::Rectangle,
+        shell: &mut Shell<'_, InnerMessage>,
+        _viewport: &Rectangle,
     ) {
         match event {
             iced::Event::Window(iced::window::Event::RedrawRequested(now)) => {
-                let state = state.state.downcast_mut::<State<Renderer>>();
+                let state = tree.state.downcast_mut::<State<Renderer>>();
 
                 let widget_width = layout.bounds().width - self.term.style.padding.x();
                 let widget_height = layout.bounds().height - self.term.style.padding.y();
@@ -531,7 +544,7 @@ where
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonPressed(button)) => {
-                let state = state.state.downcast_mut::<State<Renderer>>();
+                let state = tree.state.downcast_mut::<State<Renderer>>();
                 let newly_focused = cursor.position_over(layout.bounds()).is_some();
 
                 if newly_focused {
@@ -584,7 +597,7 @@ where
                 }
             }
             iced::Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
-                let state = state.state.downcast_mut::<State<Renderer>>();
+                let state = tree.state.downcast_mut::<State<Renderer>>();
                 let newly_focused = cursor.position_over(layout.bounds()).is_some();
 
                 if newly_focused {
@@ -599,7 +612,7 @@ where
                 modifiers,
                 ..
             }) => {
-                let state = state.state.downcast_mut::<State<Renderer>>();
+                let state = tree.state.downcast_mut::<State<Renderer>>();
 
                 if state.is_focused() {
                     if let Some(filter) = &self.term.key_filter {
@@ -621,7 +634,7 @@ where
                 }
             }
             iced::Event::Window(iced::window::Event::Focused) => {
-                let state = state.state.downcast_mut::<State<Renderer>>();
+                let state = tree.state.downcast_mut::<State<Renderer>>();
                 state.focus();
                 shell.request_redraw();
             }
