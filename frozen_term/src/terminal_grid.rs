@@ -30,7 +30,6 @@ pub trait TerminalGrid {
 pub trait PreRenderer<R>
 where
     R: text::Renderer,
-    R::Font: 'static,
 {
     type Grid: TerminalGrid;
 
@@ -38,7 +37,7 @@ where
     fn update(&mut self, grid: &Self::Grid, renderer: &R);
     fn visible_rows<'a>(
         &'a self,
-    ) -> impl Iterator<Item = Option<(&'a R::Paragraph, &'a [text::Span<'a, (), R::Font>])>>;
+    ) -> impl Iterator<Item = Option<(&'a R::Paragraph, &'a [text::Span<'a, ()>])>>;
 }
 
 #[derive(Debug, Clone, Copy)]

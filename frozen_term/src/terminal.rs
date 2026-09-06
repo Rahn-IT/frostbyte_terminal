@@ -262,7 +262,7 @@ impl Terminal {
 
     pub fn view<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, Message, Theme, Renderer>
     where
-        Renderer: iced::advanced::text::Renderer<Font = iced::Font> + 'static,
+        Renderer: iced::advanced::text::Renderer + 'static,
         Theme: iced::widget::text::Catalog + 'static,
         Theme: iced::widget::container::Catalog + iced::widget::button::Catalog,
         <Theme as iced::widget::text::Catalog>::Class<'static>:
@@ -278,7 +278,7 @@ impl Terminal {
         &'a self,
     ) -> iced::Element<'a, InnerMessage, Theme, Renderer>
     where
-        Renderer: iced::advanced::text::Renderer<Font = iced::Font> + 'static,
+        Renderer: iced::advanced::text::Renderer + 'static,
         Theme: iced::widget::text::Catalog + 'static,
         Theme: iced::widget::container::Catalog + iced::widget::button::Catalog,
         <Theme as iced::widget::text::Catalog>::Class<'static>:
@@ -426,7 +426,7 @@ where
 impl<Theme, Renderer> iced::advanced::widget::Widget<InnerMessage, Theme, Renderer>
     for TerminalWidget<'_>
 where
-    Renderer: iced::advanced::text::Renderer<Font = iced::Font>,
+    Renderer: iced::advanced::text::Renderer,
     Renderer: 'static,
 {
     fn tag(&self) -> iced::advanced::widget::tree::Tag {
@@ -501,7 +501,7 @@ where
                     state.last_widget_width = widget_width;
                     state.last_widget_height = widget_height;
 
-                    let text_size = self.term.style.text_size.unwrap_or(renderer.default_size());
+                    let text_size = self.term.style.text_size.unwrap_or(renderer.text_size());
                     let line_height = self.term.style.line_height.to_absolute(text_size);
                     let char_width = text_size * CHAR_WIDTH;
 
@@ -687,7 +687,7 @@ where
             .term
             .style
             .text_size
-            .unwrap_or_else(|| renderer.default_size());
+            .unwrap_or_else(|| renderer.text_size());
 
         let y_multiplier = self.term.style.line_height.to_absolute(size).0;
 
@@ -766,7 +766,7 @@ impl<'a> TerminalWidget<'a> {
             .term
             .style
             .text_size
-            .unwrap_or_else(|| renderer.default_size());
+            .unwrap_or_else(|| renderer.text_size());
         let line_height = self.term.style.line_height.to_absolute(text_size).0;
         let text_size = text_size.0;
         let char_width = text_size * CHAR_WIDTH;
@@ -810,7 +810,7 @@ impl<'a> TerminalWidget<'a> {
             .term
             .style
             .text_size
-            .unwrap_or_else(|| renderer.default_size());
+            .unwrap_or_else(|| renderer.text_size());
 
         let line_height = self.term.style.line_height.to_absolute(text_size).0;
         let text_size = text_size.0;
@@ -827,19 +827,19 @@ impl<'a> TerminalWidget<'a> {
             CursorShape::Underline => iced::Rectangle::new(
                 base_cursor_position
                     + translation
-                    + iced::Vector::new(0.0, renderer.default_size().0 * 1.2),
-                iced::Size::new(renderer.default_size().0 * CHAR_WIDTH, 1.0),
+                    + iced::Vector::new(0.0, renderer.text_size().0 * 1.2),
+                iced::Size::new(renderer.text_size().0 * CHAR_WIDTH, 1.0),
             ),
             CursorShape::Block => iced::Rectangle::new(
                 base_cursor_position + translation + iced::Vector::new(padding, padding),
                 iced::Size::new(
-                    renderer.default_size().0 * CHAR_WIDTH - padding,
-                    renderer.default_size().0 * 1.3 - padding,
+                    renderer.text_size().0 * CHAR_WIDTH - padding,
+                    renderer.text_size().0 * 1.3 - padding,
                 ),
             ),
             CursorShape::Bar => iced::Rectangle::new(
                 base_cursor_position + translation + iced::Vector::new(padding, padding),
-                iced::Size::new(1.0, renderer.default_size().0 * 1.3 - padding),
+                iced::Size::new(1.0, renderer.text_size().0 * 1.3 - padding),
             ),
         };
 

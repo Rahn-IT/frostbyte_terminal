@@ -35,8 +35,6 @@ impl<R: text::Renderer> WeztermPreRenderer<R> {
 impl<R> PreRenderer<R> for WeztermPreRenderer<R>
 where
     R: text::Renderer,
-    R::Font: From<iced::Font>,
-    R::Font: 'static,
 {
     type Grid = WeztermGrid;
 
@@ -53,12 +51,7 @@ where
 
         let selection = grid.selection.get_selection();
 
-        let text_size = self
-            .style
-            .text_size
-            .unwrap_or_else(|| renderer.default_size());
-
-        let font: R::Font = self.style.font.into();
+        let text_size = self.style.text_size.unwrap_or_else(|| renderer.text_size());
 
         // Make sure our paragraph cache is ready and aligned
 
@@ -115,7 +108,7 @@ where
 
             let mut current_text = String::new();
             let mut current_attrs = CellAttributes::default();
-            let mut spans: Vec<Span<(), R::Font>> = Vec::new();
+            let mut spans: Vec<Span<()>> = Vec::new();
 
             for cell in line.visible_cells() {
                 let cell_selected = selection.as_ref().is_some_and(|selection| {
@@ -158,7 +151,7 @@ where
                     bounds: iced::Size::INFINITE,
                     size: text_size,
                     line_height: iced::advanced::text::LineHeight::default(),
-                    font: font,
+                    font: self.style.font,
                     align_x: iced::advanced::text::Alignment::Left,
                     align_y: iced::alignment::Vertical::Top,
                     shaping: text::Shaping::Auto,
@@ -180,7 +173,7 @@ where
 
     fn visible_rows<'a>(
         &'a self,
-    ) -> impl Iterator<Item = Option<(&'a R::Paragraph, &'a [text::Span<'a, (), R::Font>])>> {
+    ) -> impl Iterator<Item = Option<(&'a R::Paragraph, &'a [text::Span<'a, ()>])>> {
         self.cache_rows
             .range(self.visible_cache_range.clone())
             .map(|row| {
@@ -191,9 +184,9 @@ where
     }
 }
 
-fn push_span<Font>(
+fn push_span(
     style: &Style,
-    spans: &mut Vec<Span<(), Font>>,
+    spans: &mut Vec<Span<()>>,
     text: String,
     attributes: CellAttributes,
     is_current_selected: bool,
@@ -225,10 +218,7 @@ fn push_span<Font>(
 }
 
 pub struct ParagraphRow<R: text::Renderer> {
-    pub cached: Option<(
-        R::Paragraph,
-        Vec<iced::advanced::text::Span<'static, (), R::Font>>,
-    )>,
+    pub cached: Option<(R::Paragraph, Vec<iced::advanced::text::Span<'static, ()>>)>,
     // pub paragraph: R::Paragraph,
     // pub spans: Vec<iced::advanced::text::Span<'static, (), R::Font>>,
     pub last_update_seqno: usize,

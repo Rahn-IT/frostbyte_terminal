@@ -4,9 +4,9 @@ use crate::{Style, terminal};
 use async_pty::PtyProcess;
 use iced::{
     self, Element, Length, Task,
-    task::sipper,
     widget::{center, text},
 };
+use tokio_stream::{StreamExt, wrappers::ReceiverStream};
 
 #[derive(Debug, Clone)]
 pub struct Message(InnerMessage);
@@ -78,14 +78,9 @@ impl LocalTerminal {
             InnerMessage::Opened(arc) => {
                 let (process, output) = Arc::into_inner(arc).unwrap();
 
-                let stream = sipper(|mut sender| async move {
-                    let mut output = output;
-                    while let Some(chunk) = output.recv().await {
-                        sender.send(InnerMessage::Output(chunk)).await;
-                    }
-
-                    sender.send(InnerMessage::Closed).await;
-                });
+                let stream = ReceiverStream::new(output)
+                    .map(InnerMessage::Output)
+                    .chain(tokio_stream::once(InnerMessage::Closed));
 
                 let task = Task::stream(stream).map(Message);
 
