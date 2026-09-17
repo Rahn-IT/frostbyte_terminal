@@ -658,25 +658,27 @@ where
     ) -> iced::advanced::layout::Node {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
-        // Measure a single terminal column using the same shaping as the rendered rows.
-        let paragraph = Renderer::Paragraph::with_text(iced::advanced::Text {
-            content: "M",
-            bounds: Size::INFINITE,
-            size: self
-                .term
-                .style
-                .text_size
-                .unwrap_or_else(|| renderer.text_size()),
-            line_height: self.term.style.line_height,
-            font: self.term.style.font,
-            align_x: iced::advanced::text::Alignment::Left,
-            align_y: iced::alignment::Vertical::Top,
-            shaping: iced::advanced::text::Shaping::Auto,
-            wrapping: iced::widget::text::Wrapping::None,
-            hint_factor: None,
-            ellipsis: iced::advanced::text::Ellipsis::None,
-        });
-        state.char_width = paragraph.min_width();
+        if state.char_width == 0.0 {
+            // Measure a single terminal column using the same shaping as the rendered rows.
+            let paragraph = Renderer::Paragraph::with_text(iced::advanced::Text {
+                content: "M",
+                bounds: Size::INFINITE,
+                size: self
+                    .term
+                    .style
+                    .text_size
+                    .unwrap_or_else(|| renderer.text_size()),
+                line_height: self.term.style.line_height,
+                font: self.term.style.font,
+                align_x: iced::advanced::text::Alignment::Left,
+                align_y: iced::alignment::Vertical::Top,
+                shaping: iced::advanced::text::Shaping::Auto,
+                wrapping: iced::widget::text::Wrapping::None,
+                hint_factor: None,
+                ellipsis: iced::advanced::text::Ellipsis::None,
+            });
+            state.char_width = paragraph.min_width();
+        }
 
         state.prerenderer.update(&self.term.grid, renderer);
 
