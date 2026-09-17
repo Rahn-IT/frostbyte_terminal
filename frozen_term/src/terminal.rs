@@ -456,6 +456,7 @@ where
         &mut self,
         tree: &mut iced::advanced::widget::Tree,
         layout: iced::advanced::Layout<'_>,
+        _viewport: &iced::Rectangle,
         _renderer: &Renderer,
         operation: &mut dyn iced::advanced::widget::Operation,
     ) {
@@ -682,7 +683,7 @@ where
 
         state.prerenderer.update(&self.term.grid, renderer);
 
-        iced::advanced::layout::Node::new(limits.max())
+        iced::advanced::layout::Node::new(limits.max)
     }
 
     fn draw(

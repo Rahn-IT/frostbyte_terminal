@@ -97,7 +97,7 @@ where
             0.0
         };
 
-        iced::advanced::layout::Node::new(Size::new(WIDTH.into(), limits.max().height))
+        iced::advanced::layout::Node::new(Size::new(WIDTH.into(), limits.max.height))
     }
 
     fn update(
