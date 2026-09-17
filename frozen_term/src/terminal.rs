@@ -395,12 +395,12 @@ struct State<R: iced::advanced::text::Renderer> {
     last_cursor_blink: Instant,
     cursor_blink_currently_shown: bool,
     now: Instant,
+    char_width: f32,
     last_widget_width: f32,
     last_widget_height: f32,
     last_id: Option<Id>,
 }
 
-const CHAR_WIDTH: f32 = 0.6;
 const CURSOR_BLINK_INTERVAL_MILLIS: u128 = 500;
 
 impl<Renderer> iced::advanced::widget::operation::Focusable for State<Renderer>
@@ -442,8 +442,9 @@ where
             now: Instant::now(),
             // needs to be none to detect newly created widgets
             last_id: None,
-            last_widget_height: 0.0,
+            char_width: 0.0,
             last_widget_width: 0.0,
+            last_widget_height: 0.0,
         })
     }
 
@@ -493,20 +494,20 @@ where
                     shell.publish(InnerMessage::IdChanged);
                 }
 
-                // check if widget size has changed
-                if state.last_widget_width != widget_width
-                    || state.last_widget_height != widget_height
-                    || id_changed
+                // Check for a resize when the widget bounds or terminal change.
+                if state.char_width > 0.0
+                    && (state.last_widget_width != widget_width
+                        || state.last_widget_height != widget_height
+                        || id_changed)
                 {
                     state.last_widget_width = widget_width;
                     state.last_widget_height = widget_height;
 
                     let text_size = self.term.style.text_size.unwrap_or(renderer.text_size());
-                    let line_height = self.term.style.line_height.to_absolute(text_size);
-                    let char_width = text_size * CHAR_WIDTH;
+                    let line_height = self.term.style.line_height.to_absolute(text_size).0;
 
-                    let target_line_count = (widget_height / line_height.0) as usize;
-                    let target_col_count = (widget_width / char_width.0) as usize;
+                    let target_line_count = (widget_height / line_height) as usize;
+                    let target_col_count = (widget_width / state.char_width) as usize;
                     let size = self.term.grid.get_size();
 
                     if size.rows != target_line_count || size.cols != target_col_count {
@@ -558,9 +559,12 @@ where
                         }
 
                         if let Some(cursor_position) = cursor.position() {
-                            if let Some(char_pos) =
-                                self.screen_to_visible_position(cursor_position, layout, renderer)
-                            {
+                            if let Some(char_pos) = self.screen_to_visible_position(
+                                cursor_position,
+                                layout,
+                                renderer,
+                                state.char_width,
+                            ) {
                                 shell.publish(InnerMessage::StartSelection(char_pos));
                             }
                         }
@@ -579,10 +583,14 @@ where
                 }
             }
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                let state = tree.state.downcast_ref::<State<Renderer>>();
                 if self.term.grid.currently_selecting() {
-                    if let Some(char_pos) =
-                        self.screen_to_visible_position(*position, layout, renderer)
-                    {
+                    if let Some(char_pos) = self.screen_to_visible_position(
+                        *position,
+                        layout,
+                        renderer,
+                        state.char_width,
+                    ) {
                         shell.publish(InnerMessage::MoveSelection(char_pos));
                     }
                     shell.capture_event();
@@ -649,6 +657,26 @@ where
         limits: &iced::advanced::layout::Limits,
     ) -> iced::advanced::layout::Node {
         let state = tree.state.downcast_mut::<State<Renderer>>();
+
+        // Measure a single terminal column using the same shaping as the rendered rows.
+        let paragraph = Renderer::Paragraph::with_text(iced::advanced::Text {
+            content: "M",
+            bounds: Size::INFINITE,
+            size: self
+                .term
+                .style
+                .text_size
+                .unwrap_or_else(|| renderer.text_size()),
+            line_height: self.term.style.line_height,
+            font: self.term.style.font,
+            align_x: iced::advanced::text::Alignment::Left,
+            align_y: iced::alignment::Vertical::Top,
+            shaping: iced::advanced::text::Shaping::Auto,
+            wrapping: iced::widget::text::Wrapping::None,
+            hint_factor: None,
+            ellipsis: iced::advanced::text::Ellipsis::None,
+        });
+        state.char_width = paragraph.min_width();
 
         state.prerenderer.update(&self.term.grid, renderer);
 
@@ -731,7 +759,9 @@ where
             );
         }
 
-        self.draw_cursor(renderer, &state, translation);
+        if state.cursor_blink_currently_shown {
+            self.draw_cursor(renderer, state.char_width, translation);
+        }
     }
 }
 
@@ -745,6 +775,7 @@ impl<'a> TerminalWidget<'a> {
         screen_pos: iced::Point,
         layout: iced::advanced::Layout<'_>,
         renderer: &Renderer,
+        char_width: f32,
     ) -> Option<VisiblePosition>
     where
         Renderer: iced::advanced::text::Renderer,
@@ -757,7 +788,7 @@ impl<'a> TerminalWidget<'a> {
         let relative_pos = screen_pos - translation;
 
         // Check if position is within terminal bounds
-        if relative_pos.x < 0.0 || relative_pos.y < 0.0 {
+        if relative_pos.x < 0.0 || relative_pos.y < 0.0 || char_width <= 0.0 {
             return None;
         }
 
@@ -768,8 +799,6 @@ impl<'a> TerminalWidget<'a> {
             .text_size
             .unwrap_or_else(|| renderer.text_size());
         let line_height = self.term.style.line_height.to_absolute(text_size).0;
-        let text_size = text_size.0;
-        let char_width = text_size * CHAR_WIDTH;
 
         // Convert to character coordinates
         let char_x = (relative_pos.x / char_width) as usize;
@@ -787,7 +816,7 @@ impl<'a> TerminalWidget<'a> {
     fn draw_cursor<Renderer>(
         &self,
         renderer: &mut Renderer,
-        state: &State<Renderer>,
+        char_width: f32,
         translation: iced::Vector,
     ) where
         Renderer: iced::advanced::text::Renderer,
@@ -795,9 +824,6 @@ impl<'a> TerminalWidget<'a> {
         let Some(cursor) = self.term.grid.get_cursor() else {
             return;
         };
-        if !state.cursor_blink_currently_shown {
-            return;
-        }
 
         // Calculate the scroll-adjusted cursor position using your custom scroll system
         // The cursor position is absolute, but we need to adjust it by the scroll offset
@@ -814,7 +840,6 @@ impl<'a> TerminalWidget<'a> {
 
         let line_height = self.term.style.line_height.to_absolute(text_size).0;
         let text_size = text_size.0;
-        let char_width = text_size * CHAR_WIDTH;
 
         let base_cursor_position = iced::Point::new(
             cursor.x as f32 * char_width,
@@ -825,21 +850,16 @@ impl<'a> TerminalWidget<'a> {
 
         let cursor_bounds = match self.term.style.cursor_shape {
             CursorShape::Underline => iced::Rectangle::new(
-                base_cursor_position
-                    + translation
-                    + iced::Vector::new(0.0, renderer.text_size().0 * 1.2),
-                iced::Size::new(renderer.text_size().0 * CHAR_WIDTH, 1.0),
+                base_cursor_position + translation + iced::Vector::new(0.0, text_size * 1.2),
+                iced::Size::new(char_width, 1.0),
             ),
             CursorShape::Block => iced::Rectangle::new(
                 base_cursor_position + translation + iced::Vector::new(padding, padding),
-                iced::Size::new(
-                    renderer.text_size().0 * CHAR_WIDTH - padding,
-                    renderer.text_size().0 * 1.3 - padding,
-                ),
+                iced::Size::new((char_width - padding).max(0.0), text_size * 1.3 - padding),
             ),
             CursorShape::Bar => iced::Rectangle::new(
                 base_cursor_position + translation + iced::Vector::new(padding, padding),
-                iced::Size::new(1.0, renderer.text_size().0 * 1.3 - padding),
+                iced::Size::new(1.0, text_size * 1.3 - padding),
             ),
         };
 
