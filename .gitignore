@@ -4,3 +4,5 @@ target/
 *.tar.zst
 *.log
 .SRCINFO
+# needed for arch build
+/src/
