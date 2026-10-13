@@ -15,7 +15,7 @@ use frozen_term::local_terminal::{self, LocalTerminal};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey};
 use iced::{
     Alignment::Center,
-    Element, Font, Length, Point, Subscription, Task,
+    Element, Font, Length, Point, Subscription, Task, Widget,
     futures::{SinkExt, Stream},
     keyboard,
     stream::channel,
@@ -23,7 +23,7 @@ use iced::{
     window::{self, MonitorIndex, PositionOnMonitor},
 };
 #[cfg(target_os = "linux")]
-use iced_exwlshell::reexport::{Anchor, NewLayerShellSettings};
+use iced_exwlshell::reexport::{Anchor, Margin, NewLayerShellSettings};
 use image::GenericImageView;
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder};
 
@@ -335,7 +335,12 @@ impl UI {
                     Task::done(Message::NewLayerShell {
                         settings: NewLayerShellSettings {
                             anchor: Anchor::Top | Anchor::Left | Anchor::Right,
-                            margin: Some((0, 200, 0, 200)),
+                            margin: Some(Margin {
+                                top: 0,
+                                right: 200,
+                                bottom: 0,
+                                left: 200,
+                            }),
                             size: iced_exwlshell::settings::LayerSize {
                                 width: iced_exwlshell::settings::Extent::Fill,
                                 height: iced_exwlshell::settings::Extent::Exact(
@@ -407,7 +412,7 @@ impl UI {
         }
     }
 
-    pub fn view(&'_ self, _id: window::Id) -> Element<'_, Message> {
+    pub fn view(&self, _id: window::Id) -> impl Widget<Message> + '_ {
         let selected_terminal = self.terminals.get(&self.selected_tab);
 
         let tab_view: Element<Message> = match selected_terminal {
@@ -417,9 +422,9 @@ impl UI {
                     message,
                 }))
                 .padding(10)
-                .into()
+                .boxed()
             }
-            None => text("terminal closed").into(),
+            None => text("terminal closed").boxed(),
         };
 
         let tab_bar = row(self.terminals.iter().map(|(id, terminal)| {
@@ -439,7 +444,7 @@ impl UI {
             .style(style)
             .width(200)
             .height(Length::Fill)
-            .into()
+            .boxed()
         }))
         .spacing(5);
 
@@ -450,20 +455,23 @@ impl UI {
                     button(center(text("New Tab")))
                         .width(200)
                         .height(Length::Fill)
-                        .on_press(Message::OpenTab),
+                        .on_press(Message::OpenTab)
+                        .boxed(),
                 )
-                .push(iced::widget::space::horizontal())
+                .push(iced::widget::space::horizontal().boxed())
                 .push(
                     button(center(text("<").size(20).align_y(Center)))
                         .width(40)
                         .height(Length::Fill)
-                        .on_press(Message::PreviousMonitor),
+                        .on_press(Message::PreviousMonitor)
+                        .boxed(),
                 )
                 .push(
                     button(center(text(">").size(20).align_y(Center)))
                         .width(40)
                         .height(Length::Fill)
-                        .on_press(Message::NextMonitor),
+                        .on_press(Message::NextMonitor)
+                        .boxed(),
                 )
                 .push(
                     button(center(text("X").size(20).align_y(Center)))
@@ -471,12 +479,12 @@ impl UI {
                         .width(40)
                         .height(Length::Fill)
                         .on_press(Message::CloseWindow)
+                        .boxed()
                 )
                 .height(40)
         ]
         .height(40)
         .height(Length::Fill)
-        .into()
     }
 
     pub fn title(&self, _id: window::Id) -> String {

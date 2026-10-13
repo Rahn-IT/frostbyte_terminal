@@ -4,7 +4,7 @@ use std::{
 };
 
 use iced::{
-    Event, Rectangle, Size, Task, Vector,
+    Event, Rectangle, Size, Task, Vector, Widget,
     advanced::{
         Layout, Shell, mouse,
         text::Paragraph,
@@ -260,7 +260,7 @@ impl Terminal {
         )
     }
 
-    pub fn view<'a, Theme, Renderer>(&'a self) -> iced::Element<'a, Message, Theme, Renderer>
+    pub fn view<'a, Theme, Renderer>(&'a self) -> impl Widget<Message, Theme, Renderer> + 'a
     where
         Renderer: iced::advanced::text::Renderer + 'static,
         Theme: iced::widget::text::Catalog + 'static,
@@ -276,7 +276,7 @@ impl Terminal {
 
     fn view_internal<'a, Theme, Renderer>(
         &'a self,
-    ) -> iced::Element<'a, InnerMessage, Theme, Renderer>
+    ) -> impl Widget<InnerMessage, Theme, Renderer> + 'a
     where
         Renderer: iced::advanced::text::Renderer + 'static,
         Theme: iced::widget::text::Catalog + 'static,
@@ -290,7 +290,7 @@ impl Terminal {
         let total_rows = self.grid.available_lines();
 
         let terminal_widget = row![
-            iced::Element::new(TerminalWidget::new(self)),
+            TerminalWidget::new(self),
             Scrollbar::new(
                 total_rows as u32,
                 self.grid.get_scroll() as u32,
@@ -343,9 +343,9 @@ impl Terminal {
                     left: position.x,
                 });
 
-            iced::widget::stack![terminal_widget, positioned_container].into()
+            iced::widget::stack![terminal_widget, positioned_container]
         } else {
-            iced::widget::stack![terminal_widget].into()
+            iced::widget::stack![terminal_widget]
         }
     }
 }
@@ -423,6 +423,8 @@ where
     }
 }
 
+impl iced::advanced::widget::Meta for TerminalWidget<'_> {}
+
 impl<Theme, Renderer> iced::advanced::widget::Widget<InnerMessage, Theme, Renderer>
     for TerminalWidget<'_>
 where
@@ -455,7 +457,7 @@ where
     fn operate(
         &mut self,
         tree: &mut iced::advanced::widget::Tree,
-        layout: iced::advanced::Layout<'_>,
+        layout: iced::advanced::Layout,
         _viewport: &iced::Rectangle,
         _renderer: &Renderer,
         operation: &mut dyn iced::advanced::widget::Operation,
@@ -469,7 +471,7 @@ where
         &mut self,
         tree: &mut Tree,
         event: &Event,
-        layout: Layout<'_>,
+        layout: Layout,
         cursor: mouse::Cursor,
         renderer: &Renderer,
         shell: &mut Shell<'_, InnerMessage>,
@@ -656,7 +658,7 @@ where
         tree: &mut iced::advanced::widget::Tree,
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
-    ) -> iced::advanced::layout::Node {
+    ) {
         let state = tree.state.downcast_mut::<State<Renderer>>();
 
         if state.char_width == 0.0 {
@@ -683,7 +685,7 @@ where
 
         state.prerenderer.update(&self.term.grid, renderer);
 
-        iced::advanced::layout::Node::new(limits.max)
+        tree.size = limits.max;
     }
 
     fn draw(
@@ -692,7 +694,7 @@ where
         renderer: &mut Renderer,
         _theme: &Theme,
         _style: &iced::advanced::renderer::Style,
-        layout: iced::advanced::Layout<'_>,
+        layout: iced::advanced::Layout,
         _cursor: iced::advanced::mouse::Cursor,
         viewport: &iced::Rectangle,
     ) {
@@ -776,7 +778,7 @@ impl<'a> TerminalWidget<'a> {
     fn screen_to_visible_position<Renderer>(
         &self,
         screen_pos: iced::Point,
-        layout: iced::advanced::Layout<'_>,
+        layout: iced::advanced::Layout,
         renderer: &Renderer,
         char_width: f32,
     ) -> Option<VisiblePosition>

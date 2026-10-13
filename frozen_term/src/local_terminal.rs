@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use crate::{Style, terminal};
 use async_pty::PtyProcess;
 use iced::{
-    self, Element, Length, Task,
+    self, Length, Task, Widget,
     widget::{center, text},
 };
 use tokio_stream::{StreamExt, wrappers::ReceiverStream};
@@ -134,11 +134,16 @@ impl LocalTerminal {
         }
     }
 
-    pub fn view<'a>(&'a self) -> Element<'a, Message> {
+    pub fn view(&self) -> impl Widget<Message> + '_ {
         match &self.state {
-            State::Starting => center(text!("opening pty...")).into(),
-            State::Active(_) => self.display.view().map(InnerMessage::Terminal).map(Message),
-            State::Closed => center(text!("pty closed")).height(Length::Fill).into(),
+            State::Starting => center(text!("opening pty...")).boxed(),
+            State::Active(_) => self
+                .display
+                .view()
+                .map(InnerMessage::Terminal)
+                .map(Message)
+                .boxed(),
+            State::Closed => center(text!("pty closed")).height(Length::Fill).boxed(),
         }
     }
 

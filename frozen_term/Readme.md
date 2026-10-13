@@ -85,19 +85,21 @@ let terminal = terminal
 ### Integration with Iced Application
 
 ```rust
+use iced::Widget;
+
 #[derive(Debug, Clone)]
 pub enum Message {
     Terminal(frozen_term::Message),
     // ... other messages
 }
 
-impl Application for MyApp {
+impl MyApp {
     fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
             Message::Terminal(terminal_msg) => {
                 let action = self.terminal.update(terminal_msg);
                 match action {
-                    frozen_term::Action::None => iced::Task::none(),
+                    frozen_term::Action::None | frozen_term::Action::IdChanged => iced::Task::none(),
                     frozen_term::Action::Run(task) => task.map(Message::Terminal),
                     frozen_term::Action::Input(input) => {
                         // Handle terminal input (send to PTY, process, etc.)
@@ -115,7 +117,7 @@ impl Application for MyApp {
         }
     }
 
-    fn view(&self) -> iced::Element<Message> {
+    fn view(&self) -> impl iced::Widget<Message> + '_ {
         // Include terminal in your view
         self.terminal.view().map(Message::Terminal)
     }

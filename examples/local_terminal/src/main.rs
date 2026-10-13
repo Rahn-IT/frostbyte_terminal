@@ -1,6 +1,6 @@
 use frozen_term::local_terminal::{self, InputSequence, LocalTerminal};
 use iced::{
-    Length, Task,
+    Length, Task, Widget,
     widget::{button, column, container, row, text},
 };
 
@@ -62,7 +62,7 @@ impl UI {
         }
     }
 
-    fn view(&'_ self) -> iced::Element<'_, Message> {
+    fn view(&self) -> impl Widget<Message> + '_ {
         row![
             container(self.terminal.view().map(Message::Terminal)).padding(10),
             column![
@@ -80,7 +80,6 @@ impl UI {
             .padding(10)
             .spacing(20)
         ]
-        .into()
     }
 
     fn title(&self) -> String {

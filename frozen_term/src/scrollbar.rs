@@ -52,6 +52,8 @@ struct Grab {
     relative_scroll: f32,
 }
 
+impl<T, Message> iced::advanced::widget::Meta for Scrollbar<T, Message> {}
+
 impl<T, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Scrollbar<T, Message>
 where
     Message: Clone,
@@ -82,7 +84,7 @@ where
         tree: &mut iced::advanced::widget::Tree,
         _renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
-    ) -> iced::advanced::layout::Node {
+    ) {
         let state = tree.state.downcast_mut::<State>();
         let count: Pixels = self.count.clone().into();
         let scroll: Pixels = self.scroll.clone().into();
@@ -97,14 +99,14 @@ where
             0.0
         };
 
-        iced::advanced::layout::Node::new(Size::new(WIDTH.into(), limits.max.height))
+        tree.size = Size::new(WIDTH, limits.max.height);
     }
 
     fn update(
         &mut self,
         tree: &mut Tree,
         event: &Event,
-        layout: Layout<'_>,
+        layout: Layout,
         cursor: mouse::Cursor,
         _renderer: &Renderer,
         shell: &mut Shell<'_, Message>,
@@ -202,7 +204,7 @@ where
         renderer: &mut Renderer,
         theme: &Theme,
         _style: &iced::advanced::renderer::Style,
-        layout: iced::advanced::Layout<'_>,
+        layout: iced::advanced::Layout,
         _cursor: iced::advanced::mouse::Cursor,
         _viewport: &iced::Rectangle,
     ) {
@@ -248,7 +250,7 @@ where
 }
 
 fn scroller_rect(
-    layout: iced::advanced::Layout<'_>,
+    layout: iced::advanced::Layout,
     scroller_space_mult: f32,
     scroller_height_mult: f32,
 ) -> Rectangle {
@@ -262,17 +264,4 @@ fn scroller_rect(
     bounds.y += calculated_position;
     bounds.height = calculated_height;
     bounds
-}
-
-impl<'a, T, Message, Theme, Renderer> From<Scrollbar<T, Message>>
-    for iced::Element<'a, Message, Theme, Renderer>
-where
-    T: Into<Pixels> + 'static + Clone,
-    Renderer: iced::advanced::Renderer,
-    Theme: scrollable::Catalog,
-    Message: Clone + 'static,
-{
-    fn from(scrollbar: Scrollbar<T, Message>) -> Self {
-        iced::Element::new(scrollbar)
-    }
 }

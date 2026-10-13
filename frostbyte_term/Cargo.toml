@@ -11,10 +11,10 @@ frozen_term = { path = "../frozen_term", features = ["local-terminal"] }
 iced = { git = "https://github.com/iced-rs/iced.git", features = ["wgpu"] }
 async_pty = { path = "../async_pty" }
 global-hotkey = "0.8.0"
-tray-icon = "0.24.2"
-tokio = "1.53.1"
+tray-icon = "0.26.1"
+tokio = "1.53.2"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-signal-hook = "0.4.4"
+signal-hook = "0.4.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iced_exwlshell = { git = "https://github.com/acul009/exwlshelleventloop.git" }
